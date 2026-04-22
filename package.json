@@ -1,0 +1,16 @@
+{
+  "name": "corner-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node api/webhook.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.4.1",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "vercel": "^37.0.0"
+  }
+}
