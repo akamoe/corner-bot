@@ -321,23 +321,53 @@ bot.hears('🔍 Look Up Order', async (ctx) => {
   await ctx.reply('Enter the order code (e.g. ORD-4A2B1):')
 })
 
-bot.on('text', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  const text = ctx.message.text.trim().toUpperCase()
+bot.command('status', async (ctx) => {
+  const user = await getOrCreateUser(ctx.from.id)
 
-  if (role && text.startsWith('ORD-')) {
-    const order = await getOrderByCode(text)
-    if (!order) return ctx.reply('❌ Order not found.')
+  const { data: order } = await supabase
+    .from('orders')
+    .select('*, pickup_slots(label)')
+    .eq('user_id', user.id)
+    .in('status', ['confirmed', 'preparing', 'ready'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
 
-    const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
-    return ctx.reply(
-      `🎫 *${order.order_code}*\n` +
-      `🕐 Pickup: ${order.pickup_slots?.label}\n` +
-      `📋 Status: ${order.status.toUpperCase()}\n\n` +
-      `${items}`,
-      { parse_mode: 'Markdown' }
-    )
+  if (!order) return ctx.reply('You have no active orders right now.')
+
+  const statusEmoji = {
+    confirmed: '✅ Confirmed — waiting to be prepared',
+    preparing: '👨‍🍳 Being prepared now!',
+    ready: '🔔 READY — come pick it up!'
   }
+
+  await ctx.reply(
+    `📦 *Order ${order.order_code}*\n\n` +
+    `${statusEmoji[order.status]}\n` +
+    `🕐 Pickup slot: ${order.pickup_slots?.label}`,
+    { parse_mode: 'Markdown' }
+  )
+})
+bot.on('text', async (ctx) => {
+  const text = ctx.message.text.trim()
+
+  // Only intercept ORD- lookups for staff — let everything else pass
+  if (!text.toUpperCase().startsWith('ORD-')) return
+
+  const role = await getStaffRole(ctx.from.id)
+  if (!role) return
+
+  const order = await getOrderByCode(text)
+  if (!order) return ctx.reply('❌ Order not found.')
+
+  const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
+  return ctx.reply(
+    `🎫 *${order.order_code}*\n` +
+    `🕐 Pickup: ${order.pickup_slots?.label}\n` +
+    `📋 Status: ${order.status.toUpperCase()}\n\n` +
+    `${items}`,
+    { parse_mode: 'Markdown' }
+  )
 })
 
 // ─── ADMIN FLOW ──────────────────────────────────────────────
