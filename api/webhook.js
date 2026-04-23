@@ -9,6 +9,16 @@ import supabase from '../lib/supabase.js'
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
+// Register commands with Telegram so they show in the / menu
+bot.telegram.setMyCommands([
+  { command: 'start', description: 'Start the bot' },
+  { command: 'addcashier', description: 'Add a cashier (admin only)' },
+  { command: 'removecashier', description: 'Remove a cashier (admin only)' },
+  { command: 'status', description: 'Check your active order' },
+  { command: 'cart', description: 'View your cart' },
+  { command: 'help', description: 'Show help' }
+]).catch(err => console.error('Failed to set commands:', err.message))
+
 // ─── GLOBAL ERROR HANDLER ───────────────────────────────────
 
 bot.catch((err, ctx) => {
