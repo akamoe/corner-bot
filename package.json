@@ -11,6 +11,6 @@
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "vercel": "^37.0.0"
+    "vercel": "^52.0.0"
   }
 }

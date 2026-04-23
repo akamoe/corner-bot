@@ -9,6 +9,15 @@ import supabase from '../lib/supabase.js'
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
+// ─── GLOBAL ERROR HANDLER ───────────────────────────────────
+
+bot.catch((err, ctx) => {
+  console.error('Telegraf error:', err)
+  if (ctx) {
+    ctx.reply('Oops, something went wrong. Please try again.').catch(console.error)
+  }
+})
+
 // ─── HELPERS ────────────────────────────────────────────────
 
 function formatOrderSummary(order, items) {
@@ -151,7 +160,8 @@ bot.hears('🛒 My Cart', async (ctx) => {
 
 // Remove item
 bot.action(/^remove_(.+)$/, async (ctx) => {
-  await removeItemFromCart(ctx.from.id, ctx.match[1])
+  const user = await getOrCreateUser(ctx.from.id)
+  await removeItemFromCart(user.id, ctx.match[1])
   await ctx.answerCbQuery('Item removed.')
   await ctx.deleteMessage()
 })
@@ -204,16 +214,20 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
   const order = await confirmOrder(cart.id, slotId)
 
   // Get slot label
-  const { data: slot } = await supabase
+  const { data: slot, error: slotError } = await supabase
     .from('pickup_slots')
     .select('label')
     .eq('id', slotId)
-    .single()
+    .maybeSingle()
+
+  if (slotError) {
+    console.error('Error fetching slot:', slotError.message)
+  }
 
   await ctx.reply(
     `✅ *Order Confirmed!*\n\n` +
     `🎫 Your Order Code: *${order.order_code}*\n` +
-    `🕐 Pickup Time: *${slot.label}*\n\n` +
+    `🕐 Pickup Time: *${slot?.label || 'N/A'}*\n\n` +
     `Show this code at the counter when you arrive.\n` +
     `You'll get a notification when your order is ready!`,
     { parse_mode: 'Markdown' }
@@ -228,13 +242,18 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
 bot.hears('📦 My Orders', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
 
-  const { data: orders } = await supabase
+  const { data: orders, error } = await supabase
     .from('orders')
     .select('*, pickup_slots(label), order_items(*)')
     .eq('user_id', user.id)
     .neq('status', 'pending')
     .order('created_at', { ascending: false })
     .limit(5)
+
+  if (error) {
+    console.error('Error fetching orders:', error.message)
+    return ctx.reply('⚠️ Could not load your orders. Please try again.')
+  }
 
   if (!orders?.length) {
     return ctx.reply('You have no past orders yet.')
@@ -324,14 +343,19 @@ bot.hears('🔍 Look Up Order', async (ctx) => {
 bot.command('status', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
 
-  const { data: order } = await supabase
+  const { data: order, error } = await supabase
     .from('orders')
     .select('*, pickup_slots(label)')
     .eq('user_id', user.id)
     .in('status', ['confirmed', 'preparing', 'ready'])
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error fetching active order:', error.message)
+    return ctx.reply('⚠️ Could not load your order. Please try again.')
+  }
 
   if (!order) return ctx.reply('You have no active orders right now.')
 
@@ -348,6 +372,7 @@ bot.command('status', async (ctx) => {
     { parse_mode: 'Markdown' }
   )
 })
+
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim()
 
@@ -394,12 +419,17 @@ bot.command('addcashier', async (ctx) => {
   const [, telegramId, username] = parts
   const hash = hashTelegramId(telegramId)
 
-  await supabase.from('staff').upsert({
+  const { error } = await supabase.from('staff').upsert({
     telegram_hash: hash,
     telegram_username: username,
     role: 'cashier',
     is_active: true
   }, { onConflict: 'telegram_hash' })
+
+  if (error) {
+    console.error('Error adding cashier:', error.message)
+    return ctx.reply('❌ Failed to add cashier.')
+  }
 
   await ctx.reply(`✅ Cashier @${username} added successfully.`)
 })
@@ -412,7 +442,13 @@ bot.command('removecashier', async (ctx) => {
   if (parts.length < 2) return ctx.reply('Usage: /removecashier TELEGRAM_ID')
 
   const hash = hashTelegramId(parts[1])
-  await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
+  const { error } = await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
+
+  if (error) {
+    console.error('Error removing cashier:', error.message)
+    return ctx.reply('❌ Failed to remove cashier.')
+  }
+
   await ctx.reply('✅ Cashier removed.')
 })
 
@@ -433,28 +469,75 @@ bot.hears('❓ Help', async (ctx) => {
 // ─── NOTIFICATIONS ───────────────────────────────────────────
 
 async function notifyCashiers(bot, order) {
-  const { data: cashiers } = await supabase
-    .from('staff')
-    .select('telegram_hash')
-    .eq('is_active', true)
+  try {
+    const { data: cashiers, error } = await supabase
+      .from('staff')
+      .select('telegram_id')
+      .eq('role', 'cashier')
+      .eq('is_active', true)
 
-  // We can't reverse the hash to get telegram IDs — 
-  // cashiers must have started the bot first to receive messages.
-  // Store telegram_id separately for notifications (encrypted)
-  // This is handled in Phase 7 (notifications enhancement)
+    if (error) {
+      console.error('Error fetching cashiers:', error.message)
+      return
+    }
+
+    if (!cashiers?.length) return
+
+    const { data: orderDetails } = await supabase
+      .from('orders')
+      .select('*, order_items(*), pickup_slots(label)')
+      .eq('id', order.id)
+      .single()
+
+    const items = orderDetails?.order_items?.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || ''
+    const message =
+      `🔔 *New Order!*\n\n` +
+      `🎫 *${order.order_code}*\n` +
+      `🕐 Pickup: ${orderDetails?.pickup_slots?.label || 'N/A'}\n` +
+      `💰 ${order.total_amount?.toFixed(2)} IQD\n\n` +
+      `${items}`
+
+    for (const cashier of cashiers) {
+      if (cashier.telegram_id) {
+        await bot.telegram.sendMessage(cashier.telegram_id, message, { parse_mode: 'Markdown' })
+          .catch(err => console.error(`Failed to notify cashier ${cashier.telegram_id}:`, err.message))
+      }
+    }
+  } catch (err) {
+    console.error('Error in notifyCashiers:', err.message)
+  }
 }
 
 async function notifyStudent(bot, order, status) {
-  const messages = {
-    preparing: '👨‍🍳 Your order is being prepared!',
-    ready: `🔔 Your order *${order.order_code}* is READY for pickup! Head over now. 🌽`,
-    cancelled: `❌ Your order *${order.order_code}* was cancelled. Please contact us.`
+  try {
+    const messages = {
+      preparing: '👨‍🍳 Your order is being prepared!',
+      ready: `🔔 Your order *${order.order_code}* is READY for pickup! Head over now. 🌽`,
+      cancelled: `❌ Your order *${order.order_code}* was cancelled. Please contact us.`
+    }
+
+    const msg = messages[status]
+    if (!msg) return
+
+    // Get the user's telegram_id from the users table
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('telegram_id')
+      .eq('id', order.user_id)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Error fetching user for notification:', error.message)
+      return
+    }
+
+    if (userData?.telegram_id) {
+      await bot.telegram.sendMessage(userData.telegram_id, msg, { parse_mode: 'Markdown' })
+        .catch(err => console.error(`Failed to notify student ${userData.telegram_id}:`, err.message))
+    }
+  } catch (err) {
+    console.error('Error in notifyStudent:', err.message)
   }
-
-  const msg = messages[status]
-  if (!msg) return
-
-  // Notification system finalized in Phase 7
 }
 
 // ─── WEBHOOK EXPORT (for Vercel) ─────────────────────────────
