@@ -9,6 +9,9 @@ import supabase from '../lib/supabase.js'
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
+// Simple in-memory state for admin multi-step flows
+const adminFlowState = new Map()
+
 // Register commands with Telegram so they show in the / menu
 bot.telegram.setMyCommands([
   { command: 'start', description: 'Start the bot' },
@@ -385,8 +388,77 @@ bot.command('status', async (ctx) => {
 
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim()
+  const userId = ctx.from.id
 
-  // Only intercept ORD- lookups for staff — let everything else pass
+  // ─── ADMIN MULTI-STEP FLOWS ──────────────────────────────────
+
+  const flow = adminFlowState.get(userId)
+
+  if (flow?.step === 'awaiting_cashier_id') {
+    if (!/^\d+$/.test(text)) {
+      return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
+    }
+    adminFlowState.set(userId, { step: 'awaiting_cashier_username', telegramId: text })
+    return ctx.reply(
+      '✅ Telegram ID saved.\n\n' +
+      'Step 2 of 2: Now send the cashier\'s *username* (without @).',
+      { parse_mode: 'Markdown' }
+    )
+  }
+
+  if (flow?.step === 'awaiting_cashier_username') {
+    const { telegramId } = flow
+    const username = text.replace(/^@/, '')
+    const hash = hashTelegramId(telegramId)
+
+    const { data: existing } = await supabase
+      .from('staff')
+      .select('*')
+      .eq('telegram_hash', hash)
+      .maybeSingle()
+
+    const { error } = await supabase.from('staff').upsert({
+      telegram_hash: hash,
+      telegram_id: String(telegramId),
+      telegram_username: username,
+      role: 'cashier',
+      is_active: true
+    }, { onConflict: 'telegram_hash' })
+
+    adminFlowState.delete(userId)
+
+    if (error) {
+      console.error('Error adding cashier:', error.message)
+      return ctx.reply('❌ Failed to add cashier. Please try again.')
+    }
+
+    const msg = existing
+      ? `✅ Cashier @${username} updated successfully!`
+      : `✅ Cashier @${username} added successfully!`
+
+    return ctx.reply(msg)
+  }
+
+  if (flow?.step === 'awaiting_remove_id') {
+    if (!/^\d+$/.test(text)) {
+      adminFlowState.delete(userId)
+      return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
+    }
+    const hash = hashTelegramId(text)
+    const { error } = await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
+
+    adminFlowState.delete(userId)
+
+    if (error) {
+      console.error('Error removing cashier:', error.message)
+      return ctx.reply('❌ Failed to remove cashier.')
+    }
+
+    return ctx.reply('✅ Cashier removed.')
+  }
+
+  // ─── ORD- ORDER LOOKUP ──────────────────────────────────────
+
   if (!text.toUpperCase().startsWith('ORD-')) return
 
   const role = await getStaffRole(ctx.from.id)
@@ -413,8 +485,8 @@ bot.hears('👤 Manage Staff', async (ctx) => {
 
   await ctx.reply(
     '👤 *Staff Management*\n\n' +
-    'To add a cashier, send:\n`/addcashier TELEGRAM_ID username`\n\n' +
-    'To remove a cashier, send:\n`/removecashier TELEGRAM_ID`',
+    '• To *add* a cashier, send: `/addcashier`\n' +
+    '• To *remove* a cashier, send: `/removecashier`',
     { parse_mode: 'Markdown' }
   )
 })
@@ -423,44 +495,27 @@ bot.command('addcashier', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
 
-  const parts = ctx.message.text.split(' ')
-  if (parts.length < 3) return ctx.reply('Usage: /addcashier TELEGRAM_ID username')
-
-  const [, telegramId, username] = parts
-  const hash = hashTelegramId(telegramId)
-
-  const { error } = await supabase.from('staff').upsert({
-    telegram_hash: hash,
-    telegram_id: String(telegramId),
-    telegram_username: username,
-    role: 'cashier',
-    is_active: true
-  }, { onConflict: 'telegram_hash' })
-
-  if (error) {
-    console.error('Error adding cashier:', error.message)
-    return ctx.reply('❌ Failed to add cashier.')
-  }
-
-  await ctx.reply(`✅ Cashier @${username} added successfully.`)
+  // Start multi-step flow
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
+  await ctx.reply(
+    '👤 *Add Cashier*\n\n' +
+    'Step 1 of 2: Please send the cashier\'s *Telegram ID* (numeric).\n\n' +
+    '💡 Tip: Ask them to message @userinfobot to get their ID.',
+    { parse_mode: 'Markdown' }
+  )
 })
 
 bot.command('removecashier', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
 
-  const parts = ctx.message.text.split(' ')
-  if (parts.length < 2) return ctx.reply('Usage: /removecashier TELEGRAM_ID')
-
-  const hash = hashTelegramId(parts[1])
-  const { error } = await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
-
-  if (error) {
-    console.error('Error removing cashier:', error.message)
-    return ctx.reply('❌ Failed to remove cashier.')
-  }
-
-  await ctx.reply('✅ Cashier removed.')
+  // Start multi-step flow
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
+  await ctx.reply(
+    '🗑 *Remove Cashier*\n\n' +
+    'Please send the cashier\'s *Telegram ID* to remove.',
+    { parse_mode: 'Markdown' }
+  )
 })
 
 // ─── ADMIN BUTTON HANDLERS (placeholder implementations) ─────
