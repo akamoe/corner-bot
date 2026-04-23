@@ -81,8 +81,8 @@ bot.start(async (ctx) => {
     return ctx.reply(
       `👋 Welcome, Cashier!\n\nUse the buttons below to manage incoming orders.`,
       Markup.keyboard([
-        ['📋 Active Orders'],
-        ['🔍 Look Up Order']
+        ['📋 الطلبات النشطة'],
+        ['🔍 البحث عن طلب']
       ]).resize()
     )
   }
@@ -93,8 +93,8 @@ bot.start(async (ctx) => {
     {
       parse_mode: 'Markdown',
       ...Markup.keyboard([
-        ['🍽 Browse Menu', '🛒 My Cart'],
-        ['📦 My Orders', '❓ Help']
+        ['🍽 تصفح المنيو', '🛒 سلتي'],
+        ['📦 طلباتي', '❓ مساعدة']
       ]).resize()
     }
   )
@@ -723,7 +723,7 @@ async function showAnalytics(ctx, days) {
 
 // ─── BROWSE MENU ─────────────────────────────────────────────
 
-bot.hears('🍽 Browse Menu', async (ctx) => {
+bot.hears('🍽 تصفح المنيو', async (ctx) => {
   const categories = await getCategories()
 
   if (!categories.length) {
@@ -758,7 +758,7 @@ bot.action(/^cat_(.+)$/, async (ctx) => {
     await ctx.reply(text, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('➕ Add to Cart', `add_${item.id}`)],
+        [Markup.button.callback('➕ أضف للسلة', `add_${item.id}`)],
       ])
     })
   }
@@ -777,7 +777,7 @@ bot.action(/^add_(.+)$/, async (ctx) => {
 
 // ─── CART ────────────────────────────────────────────────────
 
-bot.hears('🛒 My Cart', async (ctx) => {
+bot.hears('🛒 سلتي', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   const cart = await getCart(user.id)
 
@@ -785,8 +785,8 @@ bot.hears('🛒 My Cart', async (ctx) => {
     return ctx.reply(
       '🛒 Your cart is empty.\n\nBrowse the menu to add items!',
       Markup.keyboard([
-        ['🍽 Browse Menu', '🛒 My Cart'],
-        ['📦 My Orders', '❓ Help']
+        ['🍽 تصفح المنيو', '🛒 سلتي'],
+        ['📦 طلباتي', '❓ مساعدة']
       ]).resize()
     )
   }
@@ -796,7 +796,7 @@ bot.hears('🛒 My Cart', async (ctx) => {
   const summary = formatOrderSummary(cart, items)
 
   const removeButtons = items.map(i => [
-    Markup.button.callback(`❌ Remove ${i.item_name}`, `remove_${i.id}`)
+    Markup.button.callback(`❌ إزالة ${i.item_name}`, `remove_${i.id}`)
   ])
 
   await ctx.reply(
@@ -805,8 +805,8 @@ bot.hears('🛒 My Cart', async (ctx) => {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         ...removeButtons,
-        [Markup.button.callback('✅ Confirm Order', 'confirm_order')],
-        [Markup.button.callback('🗑 Clear Cart', 'clear_cart')]
+        [Markup.button.callback('✅ تأكيد الطلب', 'confirm_order')],
+        [Markup.button.callback('🗑 تفريغ السلة', 'clear_cart')]
       ])
     }
   )
@@ -888,7 +888,7 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
 
 // ─── MY ORDERS ───────────────────────────────────────────────
 
-bot.hears('📦 My Orders', async (ctx) => {
+bot.hears('📦 طلباتي', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
 
   const { data: orders, error } = await supabase
@@ -928,7 +928,7 @@ bot.hears('📦 My Orders', async (ctx) => {
 // CASHIER HANDLERS
 // ═══════════════════════════════════════════════════════════
 
-bot.hears('📋 Active Orders', async (ctx) => {
+bot.hears('📋 الطلبات النشطة', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (!role) return ctx.reply('⛔ Unauthorized.')
 
@@ -949,13 +949,13 @@ bot.hears('📋 Active Orders', async (ctx) => {
 
     const buttons = []
     if (order.status === 'confirmed') {
-      buttons.push([Markup.button.callback('👨‍🍳 Mark Preparing', `status_${order.id}_preparing`)])
+      buttons.push([Markup.button.callback('👨‍🍳 قيد التحضير', `status_${order.id}_preparing`)])
     }
     if (order.status === 'preparing') {
-      buttons.push([Markup.button.callback('🔔 Mark Ready', `status_${order.id}_ready`)])
+      buttons.push([Markup.button.callback('🔔 جاهز', `status_${order.id}_ready`)])
     }
     if (order.status === 'ready') {
-      buttons.push([Markup.button.callback('✔️ Mark Picked Up', `status_${order.id}_picked_up`)])
+      buttons.push([Markup.button.callback('✔️ تم الاستلام', `status_${order.id}_picked_up`)])
     }
 
     await ctx.reply(text, {
@@ -980,9 +980,9 @@ bot.action(/^status_(.+)_(confirmed|preparing|ready|picked_up|cancelled)$/, asyn
 
   const buttons = []
   if (newStatus === 'preparing') {
-    buttons.push([Markup.button.callback('🔔 Mark Ready', `status_${orderId}_ready`)])
+    buttons.push([Markup.button.callback('🔔 جاهز', `status_${orderId}_ready`)])
   } else if (newStatus === 'ready') {
-    buttons.push([Markup.button.callback('✔️ Mark Picked Up', `status_${orderId}_picked_up`)])
+    buttons.push([Markup.button.callback('✔️ تم الاستلام', `status_${orderId}_picked_up`)])
   }
 
   await ctx.editMessageText(
@@ -996,7 +996,7 @@ bot.action(/^status_(.+)_(confirmed|preparing|ready|picked_up|cancelled)$/, asyn
   await notifyStudent(bot, order, newStatus)
 })
 
-bot.hears('🔍 Look Up Order', async (ctx) => {
+bot.hears('🔍 البحث عن طلب', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (!role) return ctx.reply('⛔ Unauthorized.')
   await ctx.reply('Enter the order code (e.g. ORD-4A2B1):')
@@ -1099,7 +1099,7 @@ bot.command('help', async (ctx) => {
   )
 })
 
-bot.hears('❓ Help', async (ctx) => {
+bot.hears('❓ مساعدة', async (ctx) => {
   await ctx.reply(
     `*Corner Bot Help*\n\n` +
     `🍽 *Browse Menu* — See today's available items\n` +
@@ -1371,7 +1371,7 @@ async function notifyCashiers(bot, order) {
       `💰 ${order.total_amount?.toFixed(2)} IQD\n\n` +
       `${items}`
 
-    const buttons = [[Markup.button.callback('👨‍🍳 Mark Preparing', `status_${order.id}_preparing`)]]
+    const buttons = [[Markup.button.callback('👨‍🍳 قيد التحضير', `status_${order.id}_preparing`)]]
 
     for (const cashier of cashiers) {
       if (cashier.telegram_id) {
