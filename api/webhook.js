@@ -553,50 +553,75 @@ bot.command('removecashier', async (ctx) => {
 // ─── ADMIN BUTTON HANDLERS (placeholder implementations) ─────
 
 bot.hears('📋 View Orders', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  try {
+    const role = await getStaffRole(ctx.from.id)
+    if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
 
-  const orders = await getPendingOrders()
+    const orders = await getPendingOrders()
 
-  if (!orders.length) {
-    return ctx.reply('✅ No active orders right now.')
-  }
+    if (!orders.length) {
+      return ctx.reply('✅ No active orders right now.')
+    }
 
-  for (const order of orders) {
-    const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
-    const text =
-      `🎫 *${order.order_code}*\n` +
-      `👤 Token: ${order.users?.anonymous_token}\n` +
-      `🕐 Pickup: ${order.pickup_slots?.label}\n` +
-      `📋 Status: ${order.status.toUpperCase()}\n\n` +
-      `${items}`
+    for (const order of orders) {
+      const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
+      const text =
+        `🎫 *${order.order_code}*\n` +
+        `👤 Token: ${order.users?.anonymous_token}\n` +
+        `🕐 Pickup: ${order.pickup_slots?.label}\n` +
+        `📋 Status: ${order.status.toUpperCase()}\n\n` +
+        `${items}`
 
-    await ctx.reply(text, { parse_mode: 'Markdown' })
+      await ctx.reply(text, { parse_mode: 'Markdown' })
+    }
+  } catch (err) {
+    console.error('View Orders error:', err)
+    return ctx.reply(`❌ Error: ${err.message || err}`)
   }
 })
 
 bot.hears('🍽 Manage Menu', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  await ctx.reply('🍽 Menu management coming soon! Use Supabase Dashboard to edit items for now.')
+  try {
+    const role = await getStaffRole(ctx.from.id)
+    if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+    await ctx.reply('🍽 Menu management coming soon! Use Supabase Dashboard to edit items for now.')
+  } catch (err) {
+    console.error('Manage Menu error:', err)
+    return ctx.reply(`❌ Error: ${err.message || err}`)
+  }
 })
 
 bot.hears('🕐 Manage Slots', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  await ctx.reply('🕐 Slot management coming soon! Use Supabase Dashboard to edit pickup slots for now.')
+  try {
+    const role = await getStaffRole(ctx.from.id)
+    if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+    await ctx.reply('🕐 Slot management coming soon! Use Supabase Dashboard to edit pickup slots for now.')
+  } catch (err) {
+    console.error('Manage Slots error:', err)
+    return ctx.reply(`❌ Error: ${err.message || err}`)
+  }
 })
 
 bot.hears('📊 Analytics', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  await ctx.reply('📊 Analytics dashboard coming soon!')
+  try {
+    const role = await getStaffRole(ctx.from.id)
+    if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+    await ctx.reply('📊 Analytics dashboard coming soon!')
+  } catch (err) {
+    console.error('Analytics error:', err)
+    return ctx.reply(`❌ Error: ${err.message || err}`)
+  }
 })
 
 bot.hears('📢 Broadcast', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  await ctx.reply('📢 Broadcast feature coming soon!\n\nUsage will be: /broadcast Your message here')
+  try {
+    const role = await getStaffRole(ctx.from.id)
+    if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+    await ctx.reply('📢 Broadcast feature coming soon!\n\nUsage will be: /broadcast Your message here')
+  } catch (err) {
+    console.error('Broadcast error:', err)
+    return ctx.reply(`❌ Error: ${err.message || err}`)
+  }
 })
 
 // ─── COMMAND ALIASES ────────────────────────────────────────
