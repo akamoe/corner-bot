@@ -28,41 +28,46 @@ function formatOrderSummary(order, items) {
 // ─── /start ─────────────────────────────────────────────────
 
 bot.start(async (ctx) => {
-  const user = await getOrCreateUser(ctx.from.id)
-  const role = await getStaffRole(ctx.from.id)
+  try {
+    const user = await getOrCreateUser(ctx.from.id)
+    const role = await getStaffRole(ctx.from.id)
 
-  if (role === 'admin') {
-    return ctx.reply(
-      `👑 Welcome back, Admin!\n\nWhat would you like to manage?`,
-      Markup.keyboard([
-        ['📋 View Orders', '🍽 Manage Menu'],
-        ['👤 Manage Staff', '🕐 Manage Slots'],
-        ['📊 Analytics', '📢 Broadcast']
-      ]).resize()
-    )
-  }
-
-  if (role === 'cashier') {
-    return ctx.reply(
-      `👋 Welcome, Cashier!\n\nUse the buttons below to manage incoming orders.`,
-      Markup.keyboard([
-        ['📋 Active Orders'],
-        ['🔍 Look Up Order']
-      ]).resize()
-    )
-  }
-
-  // Regular student
-  return ctx.reply(
-    `🌽 Welcome to *Corner*!\n\nFresh food, ready when you are. Order ahead and skip the line.`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.keyboard([
-        ['🍽 Browse Menu', '🛒 My Cart'],
-        ['📦 My Orders', '❓ Help']
-      ]).resize()
+    if (role === 'admin') {
+      return ctx.reply(
+        `👑 Welcome back, Admin!\n\nWhat would you like to manage?`,
+        Markup.keyboard([
+          ['📋 View Orders', '🍽 Manage Menu'],
+          ['👤 Manage Staff', '🕐 Manage Slots'],
+          ['📊 Analytics', '📢 Broadcast']
+        ]).resize()
+      )
     }
-  )
+
+    if (role === 'cashier') {
+      return ctx.reply(
+        `👋 Welcome, Cashier!\n\nUse the buttons below to manage incoming orders.`,
+        Markup.keyboard([
+          ['📋 Active Orders'],
+          ['🔍 Look Up Order']
+        ]).resize()
+      )
+    }
+
+    // Regular student
+    return ctx.reply(
+      `🌽 Welcome to *Corner*!\n\nFresh food, ready when you are. Order ahead and skip the line.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.keyboard([
+          ['🍽 Browse Menu', '🛒 My Cart'],
+          ['📦 My Orders', '❓ Help']
+        ]).resize()
+      }
+    )
+  } catch (err) {
+    console.error('/start error:', err)
+    return ctx.reply(`Debug error: ${err.message || err}`)
+  }
 })
 
 // ─── BROWSE MENU ─────────────────────────────────────────────
