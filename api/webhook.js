@@ -976,7 +976,7 @@ bot.action(/^status_(.+)_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery(`Order marked as ${newStatus}`)
 
   let newText = ctx.callbackQuery.message.text.replace(/\n\n✅ Updated to:[\s\S]*$/, '')
-  newText += `\n\n✅ Updated to: *${newStatus.toUpperCase()}*`
+  newText += `\n\n✅ Updated to: *${newStatus.replace(/_/g, ' ').toUpperCase()}*`
 
   const buttons = []
   if (newStatus === 'preparing') {
