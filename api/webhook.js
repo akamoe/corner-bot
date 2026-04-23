@@ -974,9 +974,23 @@ bot.action(/^status_(.+)_(.+)$/, async (ctx) => {
 
   const order = await updateOrderStatus(orderId, newStatus)
   await ctx.answerCbQuery(`Order marked as ${newStatus}`)
+
+  let newText = ctx.callbackQuery.message.text.replace(/\n\n✅ Updated to:[\s\S]*$/, '')
+  newText += `\n\n✅ Updated to: *${newStatus.toUpperCase()}*`
+
+  const buttons = []
+  if (newStatus === 'preparing') {
+    buttons.push([Markup.button.callback('🔔 Mark Ready', `status_${orderId}_ready`)])
+  } else if (newStatus === 'ready') {
+    buttons.push([Markup.button.callback('✔️ Mark Picked Up', `status_${orderId}_picked_up`)])
+  }
+
   await ctx.editMessageText(
-    ctx.callbackQuery.message.text + `\n\n✅ Updated to: *${newStatus.toUpperCase()}*`,
-    { parse_mode: 'Markdown' }
+    newText,
+    {
+      parse_mode: 'Markdown',
+      ...(buttons.length ? Markup.inlineKeyboard(buttons) : {})
+    }
   )
 
   await notifyStudent(bot, order, newStatus)
@@ -1357,10 +1371,14 @@ async function notifyCashiers(bot, order) {
       `💰 ${order.total_amount?.toFixed(2)} IQD\n\n` +
       `${items}`
 
+    const buttons = [[Markup.button.callback('👨‍🍳 Mark Preparing', `status_${order.id}_preparing`)]]
+
     for (const cashier of cashiers) {
       if (cashier.telegram_id) {
-        await bot.telegram.sendMessage(cashier.telegram_id, message, { parse_mode: 'Markdown' })
-          .catch(err => console.error(`Failed to notify cashier ${cashier.telegram_id}:`, err.message))
+        await bot.telegram.sendMessage(cashier.telegram_id, message, {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard(buttons)
+        }).catch(err => console.error(`Failed to notify cashier ${cashier.telegram_id}:`, err.message))
       }
     }
   } catch (err) {
