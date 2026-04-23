@@ -458,7 +458,89 @@ bot.command('removecashier', async (ctx) => {
   await ctx.reply('✅ Cashier removed.')
 })
 
-// ─── HELP ────────────────────────────────────────────────────
+// ─── ADMIN BUTTON HANDLERS (placeholder implementations) ─────
+
+bot.hears('📋 View Orders', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+
+  const orders = await getPendingOrders()
+
+  if (!orders.length) {
+    return ctx.reply('✅ No active orders right now.')
+  }
+
+  for (const order of orders) {
+    const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
+    const text =
+      `🎫 *${order.order_code}*\n` +
+      `👤 Token: ${order.users?.anonymous_token}\n` +
+      `🕐 Pickup: ${order.pickup_slots?.label}\n` +
+      `📋 Status: ${order.status.toUpperCase()}\n\n` +
+      `${items}`
+
+    await ctx.reply(text, { parse_mode: 'Markdown' })
+  }
+})
+
+bot.hears('🍽 Manage Menu', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  await ctx.reply('🍽 Menu management coming soon! Use Supabase Dashboard to edit items for now.')
+})
+
+bot.hears('🕐 Manage Slots', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  await ctx.reply('🕐 Slot management coming soon! Use Supabase Dashboard to edit pickup slots for now.')
+})
+
+bot.hears('📊 Analytics', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  await ctx.reply('📊 Analytics dashboard coming soon!')
+})
+
+bot.hears('📢 Broadcast', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  await ctx.reply('📢 Broadcast feature coming soon!\n\nUsage will be: /broadcast Your message here')
+})
+
+// ─── COMMAND ALIASES ────────────────────────────────────────
+
+bot.command('cart', async (ctx) => {
+  // Alias for 🛒 My Cart button
+  const user = await getOrCreateUser(ctx.from.id)
+  const cart = await getCart(user.id)
+
+  if (!cart || !cart.order_items?.length) {
+    return ctx.reply('🛒 Your cart is empty.\n\nBrowse the menu to add items!')
+  }
+
+  const items = cart.order_items
+  const total = items.reduce((s, i) => s + i.item_price * i.quantity, 0)
+  const summary = formatOrderSummary(cart, items)
+
+  await ctx.reply(
+    `🛒 *Your Cart*\n\n${summary}\n\n*Total: ${total.toFixed(2)} IQD*`,
+    { parse_mode: 'Markdown' }
+  )
+})
+
+bot.command('help', async (ctx) => {
+  await ctx.reply(
+    `*Corner Bot Help*\n\n` +
+    `🍽 *Browse Menu* — See today's available items\n` +
+    `🛒 *My Cart* — View and manage your cart\n` +
+    `📦 *My Orders* — Track your order status\n\n` +
+    `After placing an order you'll receive a *4-digit code*. Show it at the counter at your chosen pickup time.\n\n` +
+    `Questions? Visit us at the Corner container on campus! 🌽`,
+    { parse_mode: 'Markdown' }
+  )
+})
+
+// ─── HELP BUTTON ────────────────────────────────────────────
 
 bot.hears('❓ Help', async (ctx) => {
   await ctx.reply(
