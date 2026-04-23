@@ -14,12 +14,12 @@ const adminFlowState = new Map()
 
 // Register commands with Telegram so they show in the / menu
 bot.telegram.setMyCommands([
-  { command: 'start', description: 'Start the bot' },
-  { command: 'addcashier', description: 'Add a cashier (admin only)' },
-  { command: 'removecashier', description: 'Remove a cashier (admin only)' },
-  { command: 'status', description: 'Check your active order' },
-  { command: 'cart', description: 'View your cart' },
-  { command: 'help', description: 'Show help' }
+  { command: 'start', description: 'تشغيل البوت' },
+  { command: 'addcashier', description: 'إضافة كاشير (للمشرف فقط)' },
+  { command: 'removecashier', description: 'إزالة كاشير (للمشرف فقط)' },
+  { command: 'status', description: 'التحقق من طلبك النشط' },
+  { command: 'cart', description: 'عرض سلة المشتريات' },
+  { command: 'help', description: 'هيلب' }
 ]).catch(err => console.error('Failed to set commands:', err.message))
 
 // ─── GLOBAL ERROR HANDLER ───────────────────────────────────
@@ -27,14 +27,14 @@ bot.telegram.setMyCommands([
 bot.catch((err, ctx) => {
   console.error('Telegraf error:', err)
   if (ctx) {
-    ctx.reply('Oops, something went wrong. Please try again.').catch(console.error)
+    ctx.reply('اسفين، اكو خطا بس مندري وين. يرجى المحاولة مرة أخرى فد شوية.').catch(console.error)
   }
 })
 
 // ─── HELPERS ────────────────────────────────────────────────
 
 function formatOrderSummary(order, items) {
-  const lines = items.map(i => `• ${i.item_name} x${i.quantity} — ${(i.item_price * i.quantity).toFixed(2)} IQD`)
+  const lines = items.map(i => `• ${i.item_name} x${i.quantity} — ${(i.item_price * i.quantity).toFixed(2)} د.ع`)
   return lines.join('\n')
 }
 
@@ -55,9 +55,9 @@ function daysAgoIso(n) {
 
 function adminKeyboard() {
   return Markup.keyboard([
-    ['📋 View Orders', '🍽 Manage Menu'],
-    ['👤 Manage Staff', '🕐 Manage Slots'],
-    ['📊 Analytics', '📢 Broadcast']
+    ['📋 عرض الطلبات', '🍽 تعديل المنيو'],
+    ['👤 إدارة الموظفين', '🕐 إدارة الأوقات'],
+    ['📊 الإحصائيات', '📢 إرسال إعلان']
   ]).resize()
 }
 
@@ -72,29 +72,29 @@ bot.start(async (ctx) => {
 
   if (role === 'admin') {
     return ctx.reply(
-      `👑 Welcome back, Admin!\n\nWhat would you like to manage?`,
+      `👑 الغيمة الثكيلة!\n\nماذا تريد أن تدير؟`,
       adminKeyboard()
     )
   }
 
   if (role === 'cashier') {
     return ctx.reply(
-      `👋 Welcome, Cashier!\n\nUse the buttons below to manage incoming orders.`,
+      `👋 أهلاً بك، أيها الكاشير!\n\nاستخدم الأزرار أدناه لإدارة الطلبات الواردة.`,
       Markup.keyboard([
-        ['📋 Active Orders'],
-        ['🔍 Look Up Order']
+        ['📋 الطلبات النشطة'],
+        ['🔍 البحث عن طلب']
       ]).resize()
     )
   }
 
   // Regular student
   return ctx.reply(
-    `🌽 Welcome to *Corner*!\n\nFresh food, ready when you are. Order ahead and skip the line.`,
+    `🌽 اهلا بيكم بكورنر!*!\n\ جاهز من تكون أنت جاهز. اطلب مسبقاً وتخطى وقت الانتظار والسرة الطويل.`,
     {
       parse_mode: 'Markdown',
       ...Markup.keyboard([
-        ['🍽 Browse Menu', '🛒 My Cart'],
-        ['📦 My Orders', '❓ Help']
+        ['🍽 المنيو ', '🛒 سلة المشتريات'],
+        ['📦 طلباتي القديمة', '❓ هيلب']
       ]).resize()
     }
   )
@@ -106,30 +106,30 @@ bot.start(async (ctx) => {
 
 // ─── ADMIN: VIEW ORDERS ──────────────────────────────────────
 
-bot.hears('📋 View Orders', async (ctx) => {
+bot.hears('📋 عرض الطلبات', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
 
   const buttons = []
   for (let i = 0; i < 7; i++) {
     const day = daysAgoIso(i)
-    const label = i === 0 ? `Today (${day})` : i === 1 ? `Yesterday (${day})` : day
+    const label = i === 0 ? `اليوم (${day})` : i === 1 ? `أمس (${day})` : day
     buttons.push([Markup.button.callback(`📅 ${label}`, `vieworders_${day}`)])
   }
-  buttons.push([Markup.button.callback('🗓 Custom Date', 'vieworders_custom')])
+  buttons.push([Markup.button.callback('🗓 تاريخ مخصص', 'vieworders_custom')])
 
   await ctx.reply(
-    '📋 *View Orders*\n\nSelect a day:',
+    '📋 *عرض الطلبات*\n\nاختر يوماً:',
     { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }
   )
 })
 
 bot.action('vieworders_custom', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_orders_date' })
-  await ctx.reply('🗓 Send the date you want to view (format: *YYYY-MM-DD*)', { parse_mode: 'Markdown' })
+  await ctx.reply('🗓 أرسل التاريخ الذي تريد عرضه (التنسيق: *YYYY-MM-DD*)', { parse_mode: 'Markdown' })
 })
 
 async function showOrdersForDay(ctx, day) {
@@ -146,46 +146,46 @@ async function showOrdersForDay(ctx, day) {
 
   if (error) {
     console.error('View Orders error:', error.message)
-    return ctx.reply(`❌ Error: ${error.message}`)
+    return ctx.reply(`❌ خطأ: ${error.message}`)
   }
 
   if (!orders?.length) {
     return ctx.reply(
-      `📭 No orders for *${day}*.`,
+      `📭 لا توجد طلبات ليوم *${day}*.`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('💰 Total Sales', `totalsales_${day}`)]
+          [Markup.button.callback('💰 إجمالي المبيعات', `totalsales_${day}`)]
         ])
       }
     )
   }
 
-  await ctx.reply(`📋 *Orders for ${day}* — ${orders.length} order(s)`, { parse_mode: 'Markdown' })
+  await ctx.reply(`📋 *طلبات يوم ${day}* — ${orders.length} طلب(ات)`, { parse_mode: 'Markdown' })
 
   for (const order of orders) {
-    const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || '(no items)'
+    const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || '(لا توجد عناصر)'
     const text =
       `🎫 *${order.order_code}*\n` +
-      `👤 Token: ${order.users?.anonymous_token || 'N/A'}\n` +
-      `🕐 Pickup: ${order.pickup_slots?.label || 'N/A'}\n` +
-      `📋 Status: ${String(order.status).toUpperCase()}\n` +
-      `💰 ${Number(order.total_amount || 0).toFixed(2)} IQD\n\n` +
+      `👤 الرمز: ${order.users?.anonymous_token || 'غير متوفر'}\n` +
+      `🕐 الاستلام: ${order.pickup_slots?.label || 'غير متوفر'}\n` +
+      `📋 الحالة: ${String(order.status).toUpperCase()}\n` +
+      `💰 ${Number(order.total_amount || 0).toFixed(2)} د.ع\n\n` +
       `${items}`
     await ctx.reply(text, { parse_mode: 'Markdown' })
   }
 
   await ctx.reply(
-    `✅ End of ${day}`,
+    `✅ نهاية ${day}`,
     Markup.inlineKeyboard([
-      [Markup.button.callback('💰 Total Sales', `totalsales_${day}`)]
+      [Markup.button.callback('💰 إجمالي المبيعات', `totalsales_${day}`)]
     ])
   )
 }
 
 bot.action(/^vieworders_(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   const day = ctx.match[1]
   await showOrdersForDay(ctx, day)
@@ -193,7 +193,7 @@ bot.action(/^vieworders_(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
 
 bot.action(/^totalsales_(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   const day = ctx.match[1]
   const start = `${day}T00:00:00`
@@ -208,37 +208,37 @@ bot.action(/^totalsales_(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
     .lte('created_at', end)
 
   if (error) {
-    return ctx.reply(`❌ Error: ${error.message}`)
+    return ctx.reply(`❌ خطأ: ${error.message}`)
   }
 
   const totalOrders = orders?.length || 0
   const totalSales = (orders || []).reduce((s, o) => s + Number(o.total_amount || 0), 0)
 
   await ctx.reply(
-    `💰 *Total Sales — ${day}*\n\n` +
-    `📦 Orders: *${totalOrders}*\n` +
-    `💵 Revenue: *${totalSales.toFixed(2)} IQD*`,
+    `💰 *إجمالي المبيعات — ${day}*\n\n` +
+    `📦 الطلبات: *${totalOrders}*\n` +
+    `💵 الإيرادات: *${totalSales.toFixed(2)} د.ع*`,
     { parse_mode: 'Markdown' }
   )
 })
 
 // ─── ADMIN: MANAGE MENU ──────────────────────────────────────
 
-bot.hears('🍽 Manage Menu', async (ctx) => {
+bot.hears('🍽 إدارة القائمة', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
   await showMenuManagement(ctx)
 })
 
 async function showMenuManagement(ctx) {
   await ctx.reply(
-    '🍽 *Menu Management*\n\nChoose an action:',
+    '🍽 *إدارة القائمة*\n\nاختر إجراء:',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('📖 View / Edit Menu', 'menu_view')],
-        [Markup.button.callback('➕ Add Item', 'menu_add_item')],
-        [Markup.button.callback('➕ Add Category', 'menu_add_category')]
+        [Markup.button.callback('📖 عرض / تعديل القائمة', 'menu_view')],
+        [Markup.button.callback('➕ إضافة عنصر', 'menu_add_item')],
+        [Markup.button.callback('➕ إضافة فئة', 'menu_add_category')]
       ])
     }
   )
@@ -246,7 +246,7 @@ async function showMenuManagement(ctx) {
 
 bot.action('menu_view', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
 
   const { data: cats, error } = await supabase
@@ -254,15 +254,15 @@ bot.action('menu_view', async (ctx) => {
     .select('*')
     .order('sort_order')
 
-  if (error) return ctx.reply(`❌ Error: ${error.message}`)
-  if (!cats?.length) return ctx.reply('No categories yet. Add one first.')
+  if (error) return ctx.reply(`❌ خطأ: ${error.message}`)
+  if (!cats?.length) return ctx.reply('لا توجد فئات بعد. أضف واحدة أولاً.')
 
   const buttons = cats.map(c => [
-    Markup.button.callback(`${c.emoji || '🍴'} ${c.name}${c.is_active ? '' : ' (hidden)'}`, `menucat_${c.id}`)
+    Markup.button.callback(`${c.emoji || '🍴'} ${c.name}${c.is_active ? '' : ' (مخفي)'}`, `menucat_${c.id}`)
   ])
-  buttons.push([Markup.button.callback('⬅️ Back', 'menu_back')])
+  buttons.push([Markup.button.callback('⬅️ رجوع', 'menu_back')])
 
-  await ctx.reply('📂 *Categories*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) })
+  await ctx.reply('📂 *الفئات*', { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) })
 })
 
 bot.action('menu_back', async (ctx) => {
@@ -272,12 +272,12 @@ bot.action('menu_back', async (ctx) => {
 
 bot.action(/^menucat_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   const catId = ctx.match[1]
 
   const { data: cat } = await supabase.from('categories').select('*').eq('id', catId).maybeSingle()
-  if (!cat) return ctx.reply('Category not found.')
+  if (!cat) return ctx.reply('الفئة غير موجودة.')
 
   const { data: items } = await supabase
     .from('menu_items')
@@ -286,35 +286,35 @@ bot.action(/^menucat_(.+)$/, async (ctx) => {
     .order('sort_order')
 
   const buttons = (items || []).map(i => [
-    Markup.button.callback(`${i.is_available ? '✅' : '❌'} ${i.name} — ${Number(i.price).toFixed(0)} IQD`, `menuitem_${i.id}`)
+    Markup.button.callback(`${i.is_available ? '✅' : '❌'} ${i.name} — ${Number(i.price).toFixed(0)} د.ع`, `menuitem_${i.id}`)
   ])
-  buttons.push([Markup.button.callback('✏️ Rename Category', `catrename_${catId}`)])
-  buttons.push([Markup.button.callback('🗑 Delete Category', `catdelete_${catId}`)])
-  buttons.push([Markup.button.callback('⬅️ Back', 'menu_view')])
+  buttons.push([Markup.button.callback('✏️ إعادة تسمية الفئة', `catrename_${catId}`)])
+  buttons.push([Markup.button.callback('🗑 حذف الفئة', `catdelete_${catId}`)])
+  buttons.push([Markup.button.callback('⬅️ رجوع', 'menu_view')])
 
   await ctx.reply(
-    `${cat.emoji || '🍴'} *${cat.name}*\n\n${items?.length ? 'Pick an item to edit:' : '(no items in this category)'}`,
+    `${cat.emoji || '🍴'} *${cat.name}*\n\n${items?.length ? 'اختر عنصراً للتعديل:' : '(لا توجد عناصر في هذه الفئة)'}`,
     { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }
   )
 })
 
 bot.action(/^menuitem_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   const id = ctx.match[1]
   const { data: item } = await supabase.from('menu_items').select('*').eq('id', id).maybeSingle()
-  if (!item) return ctx.reply('Item not found.')
+  if (!item) return ctx.reply('العنصر غير موجود.')
 
   await ctx.reply(
-    `*${item.name}*\n${item.description || ''}\n\n💰 ${Number(item.price).toFixed(2)} IQD\n${item.is_available ? '✅ Available' : '❌ Hidden'}`,
+    `*${item.name}*\n${item.description || ''}\n\n💰 ${Number(item.price).toFixed(2)} د.ع\n${item.is_available ? '✅ متاح' : '❌ مخفي'}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('✏️ Edit Name', `itemedit_name_${id}`)],
-        [Markup.button.callback('💲 Edit Price', `itemedit_price_${id}`)],
-        [Markup.button.callback(item.is_available ? '🙈 Hide' : '👁 Show', `itemtoggle_${id}`)],
-        [Markup.button.callback('🗑 Delete Item', `itemdelete_${id}`)]
+        [Markup.button.callback('✏️ تعديل الاسم', `itemedit_name_${id}`)],
+        [Markup.button.callback('💲 تعديل السعر', `itemedit_price_${id}`)],
+        [Markup.button.callback(item.is_available ? '🙈 إخفاء' : '👁 إظهار', `itemtoggle_${id}`)],
+        [Markup.button.callback('🗑 حذف العنصر', `itemdelete_${id}`)]
       ])
     }
   )
@@ -322,108 +322,108 @@ bot.action(/^menuitem_(.+)$/, async (ctx) => {
 
 bot.action(/^itemedit_name_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_item_name', itemId: ctx.match[1] })
-  await ctx.reply('✏️ Send the new *name* for this item.', { parse_mode: 'Markdown' })
+  await ctx.reply('✏️ أرسل *الاسم* الجديد لهذا العنصر.', { parse_mode: 'Markdown' })
 })
 
 bot.action(/^itemedit_price_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_item_price', itemId: ctx.match[1] })
-  await ctx.reply('💲 Send the new *price* (numbers only).', { parse_mode: 'Markdown' })
+  await ctx.reply('💲 أرسل *السعر* الجديد (أرقام فقط).', { parse_mode: 'Markdown' })
 })
 
 bot.action(/^itemtoggle_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   const id = ctx.match[1]
   const { data: item } = await supabase.from('menu_items').select('is_available').eq('id', id).maybeSingle()
-  if (!item) return ctx.answerCbQuery('Not found.')
+  if (!item) return ctx.answerCbQuery('غير موجود.')
   const { error } = await supabase.from('menu_items').update({ is_available: !item.is_available }).eq('id', id)
-  if (error) return ctx.answerCbQuery(`Error: ${error.message}`)
-  await ctx.answerCbQuery(item.is_available ? 'Hidden' : 'Shown')
-  await ctx.reply(item.is_available ? '🙈 Item hidden.' : '👁 Item shown.')
+  if (error) return ctx.answerCbQuery(`خطأ: ${error.message}`)
+  await ctx.answerCbQuery(item.is_available ? 'مخفي' : 'ظاهر')
+  await ctx.reply(item.is_available ? '🙈 تم إخفاء العنصر.' : '👁 تم إظهار العنصر.')
 })
 
 bot.action(/^itemdelete_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   const id = ctx.match[1]
   const { error } = await supabase.from('menu_items').delete().eq('id', id)
   if (error) {
     await ctx.answerCbQuery()
     return ctx.reply(`❌ ${error.message}`)
   }
-  await ctx.answerCbQuery('Deleted')
-  await ctx.reply('🗑 Item deleted.')
+  await ctx.answerCbQuery('تم الحذف')
+  await ctx.reply('🗑 تم حذف العنصر.')
 })
 
 bot.action(/^catrename_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_category_rename', categoryId: ctx.match[1] })
-  await ctx.reply('✏️ Send the new *name* for this category.', { parse_mode: 'Markdown' })
+  await ctx.reply('✏️ أرسل *الاسم* الجديد لهذه الفئة.', { parse_mode: 'Markdown' })
 })
 
 bot.action(/^catdelete_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   const id = ctx.match[1]
   const { error } = await supabase.from('categories').delete().eq('id', id)
   if (error) {
     await ctx.answerCbQuery()
-    return ctx.reply(`❌ ${error.message}\n(You may need to delete the items inside first.)`)
+    return ctx.reply(`❌ ${error.message}\n(قد تحتاج لحذف العناصر داخلها أولاً.)`)
   }
-  await ctx.answerCbQuery('Deleted')
-  await ctx.reply('🗑 Category deleted.')
+  await ctx.answerCbQuery('تم الحذف')
+  await ctx.reply('🗑 تم حذف الفئة.')
 })
 
 bot.action('menu_add_category', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_new_category_name' })
-  await ctx.reply('➕ Send the *name* of the new category (you can prefix with an emoji e.g. "🍕 Pizza").', { parse_mode: 'Markdown' })
+  await ctx.reply('➕ أرسل *اسم* الفئة الجديدة (يمكنك إضافة إيموجي في البداية مثل "🍕 بيتزا").', { parse_mode: 'Markdown' })
 })
 
 bot.action('menu_add_item', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
 
   const { data: cats } = await supabase.from('categories').select('*').order('sort_order')
-  if (!cats?.length) return ctx.reply('No categories exist. Add a category first.')
+  if (!cats?.length) return ctx.reply('لا توجد فئات. أضف فئة أولاً.')
 
   const buttons = cats.map(c => [Markup.button.callback(`${c.emoji || '🍴'} ${c.name}`, `addtocat_${c.id}`)])
-  await ctx.reply('Which category should the new item go in?', Markup.inlineKeyboard(buttons))
+  await ctx.reply('أي فئة تريد إضافة العنصر إليها؟', Markup.inlineKeyboard(buttons))
 })
 
 bot.action(/^addtocat_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_new_item_name', categoryId: ctx.match[1] })
-  await ctx.reply('➕ Send the *name* of the new item.', { parse_mode: 'Markdown' })
+  await ctx.reply('➕ أرسل *اسم* العنصر الجديد.', { parse_mode: 'Markdown' })
 })
 
 // ─── ADMIN: MANAGE STAFF ─────────────────────────────────────
 
-bot.hears('👤 Manage Staff', async (ctx) => {
+bot.hears('👤 إدارة الموظفين', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
 
   await ctx.reply(
-    '👤 *Staff Management*\n\nChoose an action:',
+    '👤 *إدارة الموظفين*\n\nاختر إجراء:',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('➕ Add Cashier', 'add_cashier_btn')],
-        [Markup.button.callback('🗑 Remove Cashier', 'remove_cashier_btn')],
-        [Markup.button.callback('📋 List Cashiers', 'list_cashiers_btn')]
+        [Markup.button.callback('➕ إضافة كاشير', 'add_cashier_btn')],
+        [Markup.button.callback('🗑 إزالة كاشير', 'remove_cashier_btn')],
+        [Markup.button.callback('📋 قائمة الكاشيرات', 'list_cashiers_btn')]
       ])
     }
   )
@@ -431,31 +431,31 @@ bot.hears('👤 Manage Staff', async (ctx) => {
 
 bot.action('add_cashier_btn', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
   await ctx.reply(
-    '👤 *Add Cashier*\n\n' +
-    'Step 1 of 2: Please send the cashier\'s *Telegram ID* (numeric).\n\n' +
-    '💡 Tip: Ask them to message @userinfobot to get their ID.',
+    '👤 *إضافة كاشير*\n\n' +
+    'الخطوة 1 من 2: يرجى إرسال *معرف تليجرام* الخاص بالكاشير (رقمي).\n\n' +
+    '💡 تلميح: اطلب منه مراسلة @userinfobot للحصول على معرفه.',
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.action('remove_cashier_btn', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
   await ctx.reply(
-    '🗑 *Remove Cashier*\n\nSend the cashier\'s *Telegram ID* to remove.',
+    '🗑 *إزالة كاشير*\n\nأرسل *معرف تليجرام* الخاص بالكاشير لإزالته.',
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.action('list_cashiers_btn', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
 
   const { data: cashiers, error } = await supabase
@@ -465,17 +465,17 @@ bot.action('list_cashiers_btn', async (ctx) => {
     .eq('is_active', true)
 
   if (error) return ctx.reply(`❌ ${error.message}`)
-  if (!cashiers?.length) return ctx.reply('📭 No cashiers yet.')
+  if (!cashiers?.length) return ctx.reply('📭 لا يوجد كاشيرات بعد.')
 
-  const lines = cashiers.map(c => `• @${c.telegram_username || '(no username)'} — \`${c.telegram_id}\``).join('\n')
-  await ctx.reply(`📋 *Active Cashiers*\n\n${lines}`, { parse_mode: 'Markdown' })
+  const lines = cashiers.map(c => `• @${c.telegram_username || '(لا يوجد اسم مستخدم)'} — \`${c.telegram_id}\``).join('\n')
+  await ctx.reply(`📋 *الكاشيرات النشطين*\n\n${lines}`, { parse_mode: 'Markdown' })
 })
 
 // ─── ADMIN: MANAGE SLOTS ─────────────────────────────────────
 
-bot.hears('🕐 Manage Slots', async (ctx) => {
+bot.hears('🕐 إدارة الأوقات', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
   await showSlotsManagement(ctx)
 })
 
@@ -487,40 +487,40 @@ async function showSlotsManagement(ctx) {
 
   if (error) return ctx.reply(`❌ ${error.message}`)
 
-  let text = '🕐 *Pickup Slots*\n\n'
+  let text = '🕐 *أوقات الاستلام*\n\n'
   if (!slots?.length) {
-    text += '(no slots yet)\n'
+    text += '(لا توجد أوقات بعد)\n'
   } else {
     text += slots.map(s =>
-      `${s.is_active ? '✅' : '❌'} *${s.label}* — max ${s.max_orders}`
+      `${s.is_active ? '✅' : '❌'} *${s.label}* — الحد الأقصى ${s.max_orders}`
     ).join('\n')
   }
 
   const buttons = (slots || []).map(s => [
     Markup.button.callback(`⚙️ ${s.label}`, `slotmgr_${s.id}`)
   ])
-  buttons.push([Markup.button.callback('➕ Add Slot', 'slot_add')])
+  buttons.push([Markup.button.callback('➕ إضافة وقت', 'slot_add')])
 
   await ctx.reply(text, { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) })
 }
 
 bot.action(/^slotmgr_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   const id = ctx.match[1]
   const { data: slot } = await supabase.from('pickup_slots').select('*').eq('id', id).maybeSingle()
-  if (!slot) return ctx.reply('Slot not found.')
+  if (!slot) return ctx.reply('الوقت غير موجود.')
 
   await ctx.reply(
-    `🕐 *${slot.label}*\nTime: ${slot.slot_time}\nMax orders: ${slot.max_orders}\nActive: ${slot.is_active ? 'Yes' : 'No'}`,
+    `🕐 *${slot.label}*\nالوقت: ${slot.slot_time}\nالحد الأقصى للطلبات: ${slot.max_orders}\nنشط: ${slot.is_active ? 'نعم' : 'لا'}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback(slot.is_active ? '🙈 Deactivate' : '👁 Activate', `slottoggle_${id}`)],
-        [Markup.button.callback('✏️ Rename', `slotrename_${id}`)],
-        [Markup.button.callback('🔢 Set Max Orders', `slotmax_${id}`)],
-        [Markup.button.callback('🗑 Delete', `slotdelete_${id}`)]
+        [Markup.button.callback(slot.is_active ? '🙈 إلغاء التفعيل' : '👁 تفعيل', `slottoggle_${id}`)],
+        [Markup.button.callback('✏️ إعادة التسمية', `slotrename_${id}`)],
+        [Markup.button.callback('🔢 تعيين الحد الأقصى للطلبات', `slotmax_${id}`)],
+        [Markup.button.callback('🗑 حذف', `slotdelete_${id}`)]
       ])
     }
   )
@@ -528,73 +528,73 @@ bot.action(/^slotmgr_(.+)$/, async (ctx) => {
 
 bot.action(/^slottoggle_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   const id = ctx.match[1]
   const { data: slot } = await supabase.from('pickup_slots').select('is_active').eq('id', id).maybeSingle()
-  if (!slot) return ctx.answerCbQuery('Not found.')
+  if (!slot) return ctx.answerCbQuery('غير موجود.')
   const { error } = await supabase.from('pickup_slots').update({ is_active: !slot.is_active }).eq('id', id)
-  if (error) return ctx.answerCbQuery(`Error: ${error.message}`)
-  await ctx.answerCbQuery('Updated')
-  await ctx.reply(slot.is_active ? '🙈 Slot deactivated.' : '👁 Slot activated.')
+  if (error) return ctx.answerCbQuery(`خطأ: ${error.message}`)
+  await ctx.answerCbQuery('تم التحديث')
+  await ctx.reply(slot.is_active ? '🙈 تم إلغاء تفعيل الوقت.' : '👁 تم تفعيل الوقت.')
 })
 
 bot.action(/^slotrename_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_slot_rename', slotId: ctx.match[1] })
-  await ctx.reply('✏️ Send the new *label* for this slot (e.g. "12:00 PM").', { parse_mode: 'Markdown' })
+  await ctx.reply('✏️ أرسل *التسمية* الجديدة لهذا الوقت (مثل "12:00 م").', { parse_mode: 'Markdown' })
 })
 
 bot.action(/^slotmax_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_slot_max', slotId: ctx.match[1] })
-  await ctx.reply('🔢 Send the new *max orders* (positive integer).', { parse_mode: 'Markdown' })
+  await ctx.reply('🔢 أرسل *الحد الأقصى للطلبات* (عدد صحيح موجب).', { parse_mode: 'Markdown' })
 })
 
 bot.action(/^slotdelete_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   const id = ctx.match[1]
   const { error } = await supabase.from('pickup_slots').delete().eq('id', id)
   if (error) {
     await ctx.answerCbQuery()
     return ctx.reply(`❌ ${error.message}`)
   }
-  await ctx.answerCbQuery('Deleted')
-  await ctx.reply('🗑 Slot deleted.')
+  await ctx.answerCbQuery('تم الحذف')
+  await ctx.reply('🗑 تم حذف الوقت.')
 })
 
 bot.action('slot_add', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_new_slot_label' })
-  await ctx.reply('➕ Send the *label* for the new slot (e.g. "12:00 PM").', { parse_mode: 'Markdown' })
+  await ctx.reply('➕ أرسل *التسمية* للوقت الجديد (مثل "12:00 م").', { parse_mode: 'Markdown' })
 })
 
 // ─── ADMIN: BROADCAST ────────────────────────────────────────
 
-bot.hears('📢 Broadcast', async (ctx) => {
+bot.hears('📢 إرسال إعلان', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
   adminFlowState.set(ctx.from.id, { step: 'awaiting_broadcast_message' })
   await ctx.reply(
-    '📢 *Broadcast*\n\nSend the message you want to send to *all users*.\n\nReply with /cancel to abort.',
+    '📢 *إرسال إعلان*\n\nأرسل الرسالة التي تريد إرسالها إلى *جميع المستخدمين*.\n\nرد بـ /cancel لإلغاء الأمر.',
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.action('broadcast_confirm', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
 
   const state = adminFlowState.get(ctx.from.id)
   if (!state || state.step !== 'awaiting_broadcast_confirm') {
-    return ctx.reply('⚠️ Nothing to broadcast. Tap 📢 Broadcast again.')
+    return ctx.reply('⚠️ لا يوجد شيء للإرسال. اضغط 📢 إرسال إعلان مرة أخرى.')
   }
 
   const message = state.message
@@ -606,15 +606,15 @@ bot.action('broadcast_confirm', async (ctx) => {
     .not('telegram_id', 'is', null)
 
   if (error) return ctx.reply(`❌ ${error.message}`)
-  if (!users?.length) return ctx.reply('📭 No users to notify.')
+  if (!users?.length) return ctx.reply('📭 لا يوجد مستخدمون للإشعار.')
 
-  await ctx.reply(`📡 Sending to ${users.length} user(s)...`)
+  await ctx.reply(`📡 جاري الإرسال إلى ${users.length} مستخدم(ين)...`)
 
   let sent = 0
   let failed = 0
   for (const u of users) {
     try {
-      await bot.telegram.sendMessage(u.telegram_id, `📢 *Announcement*\n\n${message}`, { parse_mode: 'Markdown' })
+      await bot.telegram.sendMessage(u.telegram_id, `📢 *إعلان*\n\n${message}`, { parse_mode: 'Markdown' })
       sent++
     } catch (err) {
       failed++
@@ -622,30 +622,30 @@ bot.action('broadcast_confirm', async (ctx) => {
     }
   }
 
-  await ctx.reply(`✅ Broadcast complete.\n\n📬 Sent: ${sent}\n⚠️ Failed: ${failed}`)
+  await ctx.reply(`✅ اكتمل الإرسال.\n\n📬 تم الإرسال: ${sent}\n⚠️ فشل: ${failed}`)
 })
 
 bot.action('broadcast_cancel', async (ctx) => {
-  await ctx.answerCbQuery('Cancelled')
+  await ctx.answerCbQuery('تم الإلغاء')
   adminFlowState.delete(ctx.from.id)
-  await ctx.reply('❌ Broadcast cancelled.')
+  await ctx.reply('❌ تم إلغاء الإعلان.')
 })
 
 // ─── ADMIN: ANALYTICS ────────────────────────────────────────
 
-bot.hears('📊 Analytics', async (ctx) => {
+bot.hears('📊 الإحصائيات', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
 
   await ctx.reply(
-    '📊 *Analytics*\n\nChoose a range:',
+    '📊 *الإحصائيات*\n\nاختر الفترة:',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('Today', 'analytics_1')],
-        [Markup.button.callback('Last 7 days', 'analytics_7')],
-        [Markup.button.callback('Last 30 days', 'analytics_30')],
-        [Markup.button.callback('Custom (# days)', 'analytics_custom')]
+        [Markup.button.callback('اليوم', 'analytics_1')],
+        [Markup.button.callback('آخر 7 أيام', 'analytics_7')],
+        [Markup.button.callback('آخر 30 يوم', 'analytics_30')],
+        [Markup.button.callback('مخصص (عدد الأيام)', 'analytics_custom')]
       ])
     }
   )
@@ -653,15 +653,15 @@ bot.hears('📊 Analytics', async (ctx) => {
 
 bot.action('analytics_custom', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_analytics_days' })
-  await ctx.reply('🔢 How many days back? Send a positive integer (e.g. 14).')
+  await ctx.reply('🔢 كم يوماً تريد الرجوع؟ أرسل عدداً صحيحاً موجباً (مثل 14).')
 })
 
 bot.action(/^analytics_(\d+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ غير مصرح.')
   await ctx.answerCbQuery()
   const days = parseInt(ctx.match[1], 10)
   await showAnalytics(ctx, days)
@@ -700,19 +700,19 @@ async function showAnalytics(ctx, days) {
   const topItems = [...itemCounts.entries()]
     .sort((a, b) => b[1].qty - a[1].qty)
     .slice(0, 5)
-    .map(([name, v], idx) => `${idx + 1}. ${name} — ${v.qty} sold (${v.revenue.toFixed(2)} IQD)`)
-    .join('\n') || '(no items sold)'
+    .map(([name, v], idx) => `${idx + 1}. ${name} — ${v.qty} مباع (${v.revenue.toFixed(2)} د.ع)`)
+    .join('\n') || '(لا توجد عناصر مباعة)'
 
   const avgOrder = completed.length ? revenue / completed.length : 0
 
   await ctx.reply(
-    `📊 *Analytics — last ${days} day(s)*\n` +
+    `📊 *الإحصائيات — آخر ${days} يوم(أيام)*\n` +
     `(${from} → ${todayIso()})\n\n` +
-    `📦 Orders: *${completed.length}* (cancelled: ${cancelled.length})\n` +
-    `💵 Revenue: *${revenue.toFixed(2)} IQD*\n` +
-    `🧾 Avg order: *${avgOrder.toFixed(2)} IQD*\n` +
-    `👥 Unique customers: *${uniqueUsers}*\n\n` +
-    `🏆 *Top items*\n${topItems}`,
+    `📦 الطلبات: *${completed.length}* (ملغى: ${cancelled.length})\n` +
+    `💵 الإيرادات: *${revenue.toFixed(2)} د.ع*\n` +
+    `🧾 متوسط الطلب: *${avgOrder.toFixed(2)} د.ع*\n` +
+    `👥 العملاء الفريدون: *${uniqueUsers}*\n\n` +
+    `🏆 *أكثر العناصر مبيعاً*\n${topItems}`,
     { parse_mode: 'Markdown' }
   )
 }
@@ -723,11 +723,11 @@ async function showAnalytics(ctx, days) {
 
 // ─── BROWSE MENU ─────────────────────────────────────────────
 
-bot.hears('🍽 Browse Menu', async (ctx) => {
+bot.hears('🍽 تصفح القائمة', async (ctx) => {
   const categories = await getCategories()
 
   if (!categories.length) {
-    return ctx.reply('No menu items available right now. Check back soon!')
+    return ctx.reply('لا توجد عناصر في القائمة حالياً. تحقق لاحقاً!')
   }
 
   const buttons = categories.map(c =>
@@ -735,7 +735,7 @@ bot.hears('🍽 Browse Menu', async (ctx) => {
   )
 
   return ctx.reply(
-    '📋 *Our Menu*\n\nChoose a category:',
+    '📋 *قائمتنا*\n\nاختر فئة:',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons)
@@ -748,17 +748,17 @@ bot.action(/^cat_(.+)$/, async (ctx) => {
   const items = await getItemsByCategory(categoryId)
 
   if (!items.length) {
-    return ctx.answerCbQuery('No items in this category right now.')
+    return ctx.answerCbQuery('لا توجد عناصر في هذه الفئة حالياً.')
   }
 
   await ctx.answerCbQuery()
 
   for (const item of items) {
-    const text = `*${item.name}*\n${item.description || ''}\n\n💰 ${item.price.toFixed(2)} IQD`
+    const text = `*${item.name}*\n${item.description || ''}\n\n💰 ${item.price.toFixed(2)} د.ع`
     await ctx.reply(text, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('➕ Add to Cart', `add_${item.id}`)],
+        [Markup.button.callback('➕ أضف إلى السلة', `add_${item.id}`)],
       ])
     })
   }
@@ -768,25 +768,25 @@ bot.action(/^add_(.+)$/, async (ctx) => {
   const itemId = ctx.match[1]
   const menuItem = await getMenuItem(itemId)
 
-  if (!menuItem) return ctx.answerCbQuery('Item not found.')
+  if (!menuItem) return ctx.answerCbQuery('العنصر غير موجود.')
 
   const user = await getOrCreateUser(ctx.from.id)
   await addItemToCart(user.id, menuItem)
-  await ctx.answerCbQuery(`✅ ${menuItem.name} added to cart!`)
+  await ctx.answerCbQuery(`✅ تم إضافة ${menuItem.name} إلى السلة!`)
 })
 
 // ─── CART ────────────────────────────────────────────────────
 
-bot.hears('🛒 My Cart', async (ctx) => {
+bot.hears('🛒 سلة المشتريات', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   const cart = await getCart(user.id)
 
   if (!cart || !cart.order_items?.length) {
     return ctx.reply(
-      '🛒 Your cart is empty.\n\nBrowse the menu to add items!',
+      '🛒 سلتك فارغة.\n\nتصفح القائمة لإضافة عناصر!',
       Markup.keyboard([
-        ['🍽 Browse Menu', '🛒 My Cart'],
-        ['📦 My Orders', '❓ Help']
+        ['🍽 تصفح القائمة', '🛒 سلة المشتريات'],
+        ['📦 طلباتي', '❓ المساعدة']
       ]).resize()
     )
   }
@@ -796,17 +796,17 @@ bot.hears('🛒 My Cart', async (ctx) => {
   const summary = formatOrderSummary(cart, items)
 
   const removeButtons = items.map(i => [
-    Markup.button.callback(`❌ Remove ${i.item_name}`, `remove_${i.id}`)
+    Markup.button.callback(`❌ إزالة ${i.item_name}`, `remove_${i.id}`)
   ])
 
   await ctx.reply(
-    `🛒 *Your Cart*\n\n${summary}\n\n*Total: ${total.toFixed(2)} IQD*`,
+    `🛒 *سلة المشتريات*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} د.ع*`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         ...removeButtons,
-        [Markup.button.callback('✅ Confirm Order', 'confirm_order')],
-        [Markup.button.callback('🗑 Clear Cart', 'clear_cart')]
+        [Markup.button.callback('✅ تأكيد الطلب', 'confirm_order')],
+        [Markup.button.callback('🗑 إفراغ السلة', 'clear_cart')]
       ])
     }
   )
@@ -815,15 +815,15 @@ bot.hears('🛒 My Cart', async (ctx) => {
 bot.action(/^remove_(.+)$/, async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   await removeItemFromCart(user.id, ctx.match[1])
-  await ctx.answerCbQuery('Item removed.')
+  await ctx.answerCbQuery('تم إزالة العنصر.')
   await ctx.deleteMessage()
 })
 
 bot.action('clear_cart', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   await clearCart(user.id)
-  await ctx.answerCbQuery('Cart cleared.')
-  await ctx.editMessageText('🗑 Your cart has been cleared.')
+  await ctx.answerCbQuery('تم إفراغ السلة.')
+  await ctx.editMessageText('🗑 تم إفراغ سلة المشتريات.')
 })
 
 // ─── CONFIRM ORDER → PICK SLOT ───────────────────────────────
@@ -833,18 +833,18 @@ bot.action('confirm_order', async (ctx) => {
   const slots = await getAvailableSlots()
 
   if (!slots.length) {
-    return ctx.reply('⚠️ No pickup slots available right now. Please try again later.')
+    return ctx.reply('⚠️ لا توجد أوقات استلام متاحة حالياً. يرجى المحاولة لاحقاً.')
   }
 
   const buttons = slots.map(s => [
     Markup.button.callback(
-      `🕐 ${s.label} — ${s.spots_left} spot${s.spots_left !== 1 ? 's' : ''} left`,
+      `🕐 ${s.label} — ${s.spots_left} ${s.spots_left !== 1 ? 'أماكن' : 'مكان'} متبقي`,
       `slot_${s.id}`
     )
   ])
 
   await ctx.reply(
-    '📅 *Choose a pickup time:*',
+    '📅 *اختر وقت الاستلام:*',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons)
@@ -858,7 +858,7 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
   const cart = await getCart(user.id)
 
   if (!cart || !cart.order_items?.length) {
-    return ctx.answerCbQuery('Your cart is empty.')
+    return ctx.answerCbQuery('سلتك فارغة.')
   }
 
   await ctx.answerCbQuery()
@@ -875,11 +875,11 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
   }
 
   await ctx.reply(
-    `✅ *Order Confirmed!*\n\n` +
-    `🎫 Your Order Code: *${order.order_code}*\n` +
-    `🕐 Pickup Time: *${slot?.label || 'N/A'}*\n\n` +
-    `Show this code at the counter when you arrive.\n` +
-    `You'll get a notification when your order is ready!`,
+    `✅ *تم تأكيد الطلب!*\n\n` +
+    `🎫 رمز طلبك: *${order.order_code}*\n` +
+    `🕐 وقت الاستلام: *${slot?.label || 'غير متوفر'}*\n\n` +
+    `أظهر هذا الرمز في الكاونتر عند وصولك.\n` +
+    `سوف تتلقى إشعاراً عندما يصبح طلبك جاهزاً!`,
     { parse_mode: 'Markdown' }
   )
 
@@ -888,7 +888,7 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
 
 // ─── MY ORDERS ───────────────────────────────────────────────
 
-bot.hears('📦 My Orders', async (ctx) => {
+bot.hears('📦 طلباتي', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
 
   const { data: orders, error } = await supabase
@@ -901,11 +901,11 @@ bot.hears('📦 My Orders', async (ctx) => {
 
   if (error) {
     console.error('Error fetching orders:', error.message)
-    return ctx.reply('⚠️ Could not load your orders. Please try again.')
+    return ctx.reply('⚠️ تعذر تحميل طلباتك. يرجى المحاولة مرة أخرى.')
   }
 
   if (!orders?.length) {
-    return ctx.reply('You have no past orders yet.')
+    return ctx.reply('ليس لديك طلبات سابقة بعد.')
   }
 
   const statusEmoji = {
@@ -918,44 +918,44 @@ bot.hears('📦 My Orders', async (ctx) => {
 
   const text = orders.map(o =>
     `${statusEmoji[o.status] || '•'} *${o.order_code}* — ${o.status.toUpperCase()}\n` +
-    `🕐 ${o.pickup_slots?.label || 'N/A'} | 💰 ${o.total_amount?.toFixed(2)} IQD`
+    `🕐 ${o.pickup_slots?.label || 'غير متوفر'} | 💰 ${o.total_amount?.toFixed(2)} د.ع`
   ).join('\n\n')
 
-  await ctx.reply(`📦 *Your Recent Orders*\n\n${text}`, { parse_mode: 'Markdown' })
+  await ctx.reply(`📦 *طلباتك الأخيرة*\n\n${text}`, { parse_mode: 'Markdown' })
 })
 
 // ═══════════════════════════════════════════════════════════
 // CASHIER HANDLERS
 // ═══════════════════════════════════════════════════════════
 
-bot.hears('📋 Active Orders', async (ctx) => {
+bot.hears('📋 الطلبات النشطة', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (!role) return ctx.reply('⛔ Unauthorized.')
+  if (!role) return ctx.reply('⛔ غير مصرح.')
 
   const orders = await getPendingOrders()
 
   if (!orders.length) {
-    return ctx.reply('✅ No active orders right now.')
+    return ctx.reply('✅ لا توجد طلبات نشطة حالياً.')
   }
 
   for (const order of orders) {
     const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
     const text =
       `🎫 *${order.order_code}*\n` +
-      `👤 Token: ${order.users?.anonymous_token}\n` +
-      `🕐 Pickup: ${order.pickup_slots?.label}\n` +
-      `📋 Status: ${order.status.toUpperCase()}\n\n` +
+      `👤 الرمز: ${order.users?.anonymous_token}\n` +
+      `🕐 الاستلام: ${order.pickup_slots?.label}\n` +
+      `📋 الحالة: ${order.status.toUpperCase()}\n\n` +
       `${items}`
 
     const buttons = []
     if (order.status === 'confirmed') {
-      buttons.push([Markup.button.callback('👨‍🍳 Mark Preparing', `status_${order.id}_preparing`)])
+      buttons.push([Markup.button.callback('👨‍🍳 تحديد كقيد التحضير', `status_${order.id}_preparing`)])
     }
     if (order.status === 'preparing') {
-      buttons.push([Markup.button.callback('🔔 Mark Ready', `status_${order.id}_ready`)])
+      buttons.push([Markup.button.callback('🔔 تحديد كجاهز', `status_${order.id}_ready`)])
     }
     if (order.status === 'ready') {
-      buttons.push([Markup.button.callback('✔️ Mark Picked Up', `status_${order.id}_picked_up`)])
+      buttons.push([Markup.button.callback('✔️ تحديد كتم الاستلام', `status_${order.id}_picked_up`)])
     }
 
     await ctx.reply(text, {
@@ -967,25 +967,25 @@ bot.hears('📋 Active Orders', async (ctx) => {
 
 bot.action(/^status_(.+)_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (!role) return ctx.answerCbQuery('Unauthorized.')
+  if (!role) return ctx.answerCbQuery('غير مصرح.')
 
   const orderId = ctx.match[1]
   const newStatus = ctx.match[2]
 
   const order = await updateOrderStatus(orderId, newStatus)
-  await ctx.answerCbQuery(`Order marked as ${newStatus}`)
+  await ctx.answerCbQuery(`تم تحديد الطلب كـ ${newStatus}`)
   await ctx.editMessageText(
-    ctx.callbackQuery.message.text + `\n\n✅ Updated to: *${newStatus.toUpperCase()}*`,
+    ctx.callbackQuery.message.text + `\n\n✅ تم التحديث إلى: *${newStatus.toUpperCase()}*`,
     { parse_mode: 'Markdown' }
   )
 
   await notifyStudent(bot, order, newStatus)
 })
 
-bot.hears('🔍 Look Up Order', async (ctx) => {
+bot.hears('🔍 البحث عن طلب', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (!role) return ctx.reply('⛔ Unauthorized.')
-  await ctx.reply('Enter the order code (e.g. ORD-4A2B1):')
+  if (!role) return ctx.reply('⛔ غير مصرح.')
+  await ctx.reply('أدخل رمز الطلب (مثل ORD-4A2B1):')
 })
 
 // ═══════════════════════════════════════════════════════════
@@ -1006,21 +1006,21 @@ bot.command('status', async (ctx) => {
 
   if (error) {
     console.error('Error fetching active order:', error.message)
-    return ctx.reply('⚠️ Could not load your order. Please try again.')
+    return ctx.reply('⚠️ تعذر تحميل طلبك. يرجى المحاولة مرة أخرى.')
   }
 
-  if (!order) return ctx.reply('You have no active orders right now.')
+  if (!order) return ctx.reply('ليس لديك طلبات نشطة حالياً.')
 
   const statusEmoji = {
-    confirmed: '✅ Confirmed — waiting to be prepared',
-    preparing: '👨‍🍳 Being prepared now!',
-    ready: '🔔 READY — come pick it up!'
+    confirmed: '✅ مؤكد — في انتظار التحضير',
+    preparing: '👨‍🍳 قيد التحضير الآن!',
+    ready: '🔔 جاهز — تعال لاستلامه!'
   }
 
   await ctx.reply(
-    `📦 *Order ${order.order_code}*\n\n` +
+    `📦 *الطلب ${order.order_code}*\n\n` +
     `${statusEmoji[order.status]}\n` +
-    `🕐 Pickup slot: ${order.pickup_slots?.label}`,
+    `🕐 وقت الاستلام: ${order.pickup_slots?.label}`,
     { parse_mode: 'Markdown' }
   )
 })
@@ -1028,29 +1028,29 @@ bot.command('status', async (ctx) => {
 bot.command('cancel', async (ctx) => {
   if (adminFlowState.has(ctx.from.id)) {
     adminFlowState.delete(ctx.from.id)
-    return ctx.reply('❌ Cancelled.')
+    return ctx.reply('❌ تم الإلغاء.')
   }
-  return ctx.reply('Nothing to cancel.')
+  return ctx.reply('لا يوجد شيء لإلغائه.')
 })
 
 bot.command('addcashier', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
   adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
   await ctx.reply(
-    '👤 *Add Cashier*\n\n' +
-    'Step 1 of 2: Please send the cashier\'s *Telegram ID* (numeric).\n\n' +
-    '💡 Tip: Ask them to message @userinfobot to get their ID.',
+    '👤 *إضافة كاشير*\n\n' +
+    'الخطوة 1 من 2: يرجى إرسال *معرف تليجرام* الخاص بالكاشير (رقمي).\n\n' +
+    '💡 تلميح: اطلب منه مراسلة @userinfobot للحصول على معرفه.',
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.command('removecashier', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  if (role !== 'admin') return ctx.reply('⛔ غير مصرح.')
   adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
   await ctx.reply(
-    '🗑 *Remove Cashier*\n\nSend the cashier\'s *Telegram ID* to remove.',
+    '🗑 *إزالة كاشير*\n\nأرسل *معرف تليجرام* الخاص بالكاشير لإزالته.',
     { parse_mode: 'Markdown' }
   )
 })
@@ -1060,7 +1060,7 @@ bot.command('cart', async (ctx) => {
   const cart = await getCart(user.id)
 
   if (!cart || !cart.order_items?.length) {
-    return ctx.reply('🛒 Your cart is empty.\n\nBrowse the menu to add items!')
+    return ctx.reply('🛒 سلتك فارغة.\n\nتصفح القائمة لإضافة عناصر!')
   }
 
   const items = cart.order_items
@@ -1068,31 +1068,31 @@ bot.command('cart', async (ctx) => {
   const summary = formatOrderSummary(cart, items)
 
   await ctx.reply(
-    `🛒 *Your Cart*\n\n${summary}\n\n*Total: ${total.toFixed(2)} IQD*`,
+    `🛒 *سلة المشتريات*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} د.ع*`,
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    `*Corner Bot Help*\n\n` +
-    `🍽 *Browse Menu* — See today's available items\n` +
-    `🛒 *My Cart* — View and manage your cart\n` +
-    `📦 *My Orders* — Track your order status\n\n` +
-    `After placing an order you'll receive a *4-digit code*. Show it at the counter at your chosen pickup time.\n\n` +
-    `Questions? Visit us at the Corner container on campus! 🌽`,
+    `*مساعدة بوت كورنر*\n\n` +
+    `🍽 *تصفح القائمة* — شاهد العناصر المتاحة اليوم\n` +
+    `🛒 *سلة المشتريات* — عرض وإدارة سلتك\n` +
+    `📦 *طلباتي* — تتبع حالة طلبك\n\n` +
+    `بعد تقديم طلبك ستتلقى *رمزاً مكوناً من 4 أرقام*. أظهره في الكاونتر في وقت الاستلام الذي اخترته.\n\n` +
+    `لديك أسئلة؟ زورنا في كونتينر كورنر في الحرم الجامعي! 🌽`,
     { parse_mode: 'Markdown' }
   )
 })
 
-bot.hears('❓ Help', async (ctx) => {
+bot.hears('❓ المساعدة', async (ctx) => {
   await ctx.reply(
-    `*Corner Bot Help*\n\n` +
-    `🍽 *Browse Menu* — See today's available items\n` +
-    `🛒 *My Cart* — View and manage your cart\n` +
-    `📦 *My Orders* — Track your order status\n\n` +
-    `After placing an order you'll receive a *4-digit code*. Show it at the counter at your chosen pickup time.\n\n` +
-    `Questions? Visit us at the Corner container on campus! 🌽`,
+    `*مساعدة بوت كورنر*\n\n` +
+    `🍽 *تصفح القائمة* — شاهد العناصر المتاحة اليوم\n` +
+    `🛒 *سلة المشتريات* — عرض وإدارة سلتك\n` +
+    `📦 *طلباتي* — تتبع حالة طلبك\n\n` +
+    `بعد تقديم طلبك ستتلقى *رمزاً مكوناً من 4 أرقام*. أظهره في الكاونتر في وقت الاستلام الذي اخترته.\n\n` +
+    `لديك أسئلة؟ زورنا في كونتينر كورنر في الحرم الجامعي! 🌽`,
     { parse_mode: 'Markdown' }
   )
 })
@@ -1113,12 +1113,12 @@ bot.on('text', async (ctx) => {
       const role = await getStaffRole(userId)
       if (!role) return
       const order = await getOrderByCode(text)
-      if (!order) return ctx.reply('❌ Order not found.')
+      if (!order) return ctx.reply('❌ الطلب غير موجود.')
       const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
       return ctx.reply(
         `🎫 *${order.order_code}*\n` +
-        `🕐 Pickup: ${order.pickup_slots?.label}\n` +
-        `📋 Status: ${order.status.toUpperCase()}\n\n` +
+        `🕐 الاستلام: ${order.pickup_slots?.label}\n` +
+        `📋 الحالة: ${order.status.toUpperCase()}\n\n` +
         `${items}`,
         { parse_mode: 'Markdown' }
       )
@@ -1129,11 +1129,11 @@ bot.on('text', async (ctx) => {
   // ─── STAFF: ADD CASHIER ──────────────────────────────────
   if (flow.step === 'awaiting_cashier_id') {
     if (!/^\d+$/.test(text)) {
-      return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
+      return ctx.reply('❌ معرف غير صالح. يرجى إرسال معرف تليجرام رقمي فقط.')
     }
     adminFlowState.set(userId, { step: 'awaiting_cashier_username', telegramId: text })
     return ctx.reply(
-      '✅ Telegram ID saved.\n\nStep 2 of 2: Now send the cashier\'s *username* (without @).',
+      '✅ تم حفظ معرف تليجرام.\n\nالخطوة 2 من 2: الآن أرسل *اسم المستخدم* الخاص بالكاشير (بدون @).',
       { parse_mode: 'Markdown' }
     )
   }
@@ -1161,33 +1161,33 @@ bot.on('text', async (ctx) => {
 
     if (error) {
       console.error('Error adding cashier:', error.message)
-      return ctx.reply('❌ Failed to add cashier. Please try again.')
+      return ctx.reply('❌ فشل في إضافة الكاشير. يرجى المحاولة مرة أخرى.')
     }
 
     return ctx.reply(existing
-      ? `✅ Cashier @${username} updated successfully!`
-      : `✅ Cashier @${username} added successfully!`)
+      ? `✅ تم تحديث الكاشير @${username} بنجاح!`
+      : `✅ تم إضافة الكاشير @${username} بنجاح!`)
   }
 
   if (flow.step === 'awaiting_remove_id') {
     if (!/^\d+$/.test(text)) {
       adminFlowState.delete(userId)
-      return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
+      return ctx.reply('❌ معرف غير صالح. يرجى إرسال معرف تليجرام رقمي فقط.')
     }
     const hash = hashTelegramId(text)
     const { error } = await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
     adminFlowState.delete(userId)
     if (error) {
       console.error('Error removing cashier:', error.message)
-      return ctx.reply('❌ Failed to remove cashier.')
+      return ctx.reply('❌ فشل في إزالة الكاشير.')
     }
-    return ctx.reply('✅ Cashier removed.')
+    return ctx.reply('✅ تم إزالة الكاشير.')
   }
 
   // ─── VIEW ORDERS: CUSTOM DATE ───────────────────────────
   if (flow.step === 'awaiting_orders_date') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-      return ctx.reply('❌ Invalid format. Use YYYY-MM-DD.')
+      return ctx.reply('❌ تنسيق غير صالح. استخدم YYYY-MM-DD.')
     }
     adminFlowState.delete(userId)
     return showOrdersForDay(ctx, text)
@@ -1198,23 +1198,23 @@ bot.on('text', async (ctx) => {
     const { error } = await supabase.from('menu_items').update({ name: text }).eq('id', flow.itemId)
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply('✅ Item name updated.')
+    return ctx.reply('✅ تم تحديث اسم العنصر.')
   }
 
   if (flow.step === 'awaiting_item_price') {
     const price = parseFloat(text)
-    if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
+    if (isNaN(price) || price < 0) return ctx.reply('❌ سعر غير صالح. أرسل رقماً.')
     const { error } = await supabase.from('menu_items').update({ price }).eq('id', flow.itemId)
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply(`✅ Price updated to ${price.toFixed(2)} IQD.`)
+    return ctx.reply(`✅ تم تحديث السعر إلى ${price.toFixed(2)} د.ع.`)
   }
 
   if (flow.step === 'awaiting_category_rename') {
     const { error } = await supabase.from('categories').update({ name: text }).eq('id', flow.categoryId)
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply('✅ Category renamed.')
+    return ctx.reply('✅ تم إعادة تسمية الفئة.')
   }
 
   if (flow.step === 'awaiting_new_category_name') {
@@ -1225,19 +1225,19 @@ bot.on('text', async (ctx) => {
     const { error } = await supabase.from('categories').insert({ name, emoji, is_active: true, sort_order: 999 })
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply(`✅ Category "${name}" added.`)
+    return ctx.reply(`✅ تم إضافة الفئة "${name}".`)
   }
 
   if (flow.step === 'awaiting_new_item_name') {
     adminFlowState.set(userId, { step: 'awaiting_new_item_price', categoryId: flow.categoryId, name: text })
-    return ctx.reply('💲 Now send the *price* (numbers only).', { parse_mode: 'Markdown' })
+    return ctx.reply('💲 الآن أرسل *السعر* (أرقام فقط).', { parse_mode: 'Markdown' })
   }
 
   if (flow.step === 'awaiting_new_item_price') {
     const price = parseFloat(text)
-    if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
+    if (isNaN(price) || price < 0) return ctx.reply('❌ سعر غير صالح. أرسل رقماً.')
     adminFlowState.set(userId, { step: 'awaiting_new_item_description', categoryId: flow.categoryId, name: flow.name, price })
-    return ctx.reply('📝 Now send a short *description* (or send "-" for none).', { parse_mode: 'Markdown' })
+    return ctx.reply('📝 الآن أرسل *وصفاً* قصيراً (أو أرسل "-" إذا لا يوجد).', { parse_mode: 'Markdown' })
   }
 
   if (flow.step === 'awaiting_new_item_description') {
@@ -1252,7 +1252,7 @@ bot.on('text', async (ctx) => {
     })
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply(`✅ Item "${flow.name}" added.`)
+    return ctx.reply(`✅ تم إضافة العنصر "${flow.name}".`)
   }
 
   // ─── SLOT FLOWS ─────────────────────────────────────────
@@ -1260,35 +1260,35 @@ bot.on('text', async (ctx) => {
     const { error } = await supabase.from('pickup_slots').update({ label: text }).eq('id', flow.slotId)
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply('✅ Slot renamed.')
+    return ctx.reply('✅ تم إعادة تسمية الوقت.')
   }
 
   if (flow.step === 'awaiting_slot_max') {
     const n = parseInt(text, 10)
-    if (isNaN(n) || n < 1) return ctx.reply('❌ Send a positive integer.')
+    if (isNaN(n) || n < 1) return ctx.reply('❌ أرسل عدداً صحيحاً موجباً.')
     const { error } = await supabase.from('pickup_slots').update({ max_orders: n }).eq('id', flow.slotId)
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply(`✅ Max orders set to ${n}.`)
+    return ctx.reply(`✅ تم تعيين الحد الأقصى للطلبات إلى ${n}.`)
   }
 
   if (flow.step === 'awaiting_new_slot_label') {
     adminFlowState.set(userId, { step: 'awaiting_new_slot_time', label: text })
-    return ctx.reply('🕐 Send the *time* for this slot in HH:MM format (24h, e.g. "12:00").', { parse_mode: 'Markdown' })
+    return ctx.reply('🕐 أرسل *الوقت* لهذا الوقت بتنسيق HH:MM (24 ساعة، مثل "12:00").', { parse_mode: 'Markdown' })
   }
 
   if (flow.step === 'awaiting_new_slot_time') {
     if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) {
-      return ctx.reply('❌ Invalid time. Use HH:MM (e.g. 12:00).')
+      return ctx.reply('❌ وقت غير صالح. استخدم HH:MM (مثل 12:00).')
     }
     const slotTime = text.length === 5 ? `${text}:00` : text
     adminFlowState.set(userId, { step: 'awaiting_new_slot_max', label: flow.label, slot_time: slotTime })
-    return ctx.reply('🔢 Finally, send *max orders* for this slot.', { parse_mode: 'Markdown' })
+    return ctx.reply('🔢 أخيراً، أرسل *الحد الأقصى للطلبات* لهذا الوقت.', { parse_mode: 'Markdown' })
   }
 
   if (flow.step === 'awaiting_new_slot_max') {
     const n = parseInt(text, 10)
-    if (isNaN(n) || n < 1) return ctx.reply('❌ Send a positive integer.')
+    if (isNaN(n) || n < 1) return ctx.reply('❌ أرسل عدداً صحيحاً موجباً.')
     const { error } = await supabase.from('pickup_slots').insert({
       label: flow.label,
       slot_time: flow.slot_time,
@@ -1297,19 +1297,19 @@ bot.on('text', async (ctx) => {
     })
     adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
-    return ctx.reply(`✅ Slot "${flow.label}" added.`)
+    return ctx.reply(`✅ تم إضافة الوقت "${flow.label}".`)
   }
 
   // ─── BROADCAST FLOW ─────────────────────────────────────
   if (flow.step === 'awaiting_broadcast_message') {
     adminFlowState.set(userId, { step: 'awaiting_broadcast_confirm', message: text })
     return ctx.reply(
-      `📢 *Preview:*\n\n${text}\n\nSend to all users?`,
+      `📢 *معاينة:*\n\n${text}\n\nإرسال إلى جميع المستخدمين؟`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('✅ Send', 'broadcast_confirm')],
-          [Markup.button.callback('❌ Cancel', 'broadcast_cancel')]
+          [Markup.button.callback('✅ إرسال', 'broadcast_confirm')],
+          [Markup.button.callback('❌ إلغاء', 'broadcast_cancel')]
         ])
       }
     )
@@ -1318,7 +1318,7 @@ bot.on('text', async (ctx) => {
   // ─── ANALYTICS CUSTOM DAYS ──────────────────────────────
   if (flow.step === 'awaiting_analytics_days') {
     const n = parseInt(text, 10)
-    if (isNaN(n) || n < 1 || n > 365) return ctx.reply('❌ Send a number between 1 and 365.')
+    if (isNaN(n) || n < 1 || n > 365) return ctx.reply('❌ أرسل رقماً بين 1 و 365.')
     adminFlowState.delete(userId)
     return showAnalytics(ctx, n)
   }
@@ -1351,10 +1351,10 @@ async function notifyCashiers(bot, order) {
 
     const items = orderDetails?.order_items?.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || ''
     const message =
-      `🔔 *New Order!*\n\n` +
+      `🔔 *طلب جديد!*\n\n` +
       `🎫 *${order.order_code}*\n` +
-      `🕐 Pickup: ${orderDetails?.pickup_slots?.label || 'N/A'}\n` +
-      `💰 ${order.total_amount?.toFixed(2)} IQD\n\n` +
+      `🕐 الاستلام: ${orderDetails?.pickup_slots?.label || 'غير متوفر'}\n` +
+      `💰 ${order.total_amount?.toFixed(2)} د.ع\n\n` +
       `${items}`
 
     for (const cashier of cashiers) {
@@ -1371,9 +1371,9 @@ async function notifyCashiers(bot, order) {
 async function notifyStudent(bot, order, status) {
   try {
     const messages = {
-      preparing: '👨‍🍳 Your order is being prepared!',
-      ready: `🔔 Your order *${order.order_code}* is READY for pickup! Head over now. 🌽`,
-      cancelled: `❌ Your order *${order.order_code}* was cancelled. Please contact us.`
+      preparing: '👨‍🍳 طلبك قيد التحضير!',
+      ready: `🔔 طلبك *${order.order_code}* جاهز للاستلام! تعال الآن. 🌽`,
+      cancelled: `❌ تم إلغاء طلبك *${order.order_code}*. يرجى التواصل معنا.`
     }
 
     const msg = messages[status]
