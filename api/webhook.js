@@ -965,7 +965,7 @@ bot.hears('📋 Active Orders', async (ctx) => {
   }
 })
 
-bot.action(/^status_(.+)_(.+)$/, async (ctx) => {
+bot.action(/^status_(.+)_(confirmed|preparing|ready|picked_up|cancelled)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (!role) return ctx.answerCbQuery('Unauthorized.')
 
