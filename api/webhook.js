@@ -79,7 +79,7 @@ bot.start(async (ctx) => {
 
   if (role === 'cashier') {
     return ctx.reply(
-      `👋 Welcome, Cashier!\n\nUse the buttons below to manage incoming orders.`,
+      `👋 أهلاً بالكاشير!\n\nاستخدم الأزرار أدناه لإدارة الطلبات الواردة.`,
       Markup.keyboard([
         ['📋 الطلبات النشطة'],
         ['🔍 البحث عن طلب']
@@ -89,7 +89,7 @@ bot.start(async (ctx) => {
 
   // Regular student
   return ctx.reply(
-    `🌽 Welcome to *Corner*!\n\nFresh food, ready when you are. Order ahead and skip the line.`,
+    `🌽 أهلاً بيك بـ *Corner*!\n\nأكل طازج يجهز لك بوقته. اطلب مسبقاً وما تنطر.`,
     {
       parse_mode: 'Markdown',
       ...Markup.keyboard([
@@ -727,7 +727,7 @@ bot.hears(['🍽 تصفح المنيو', '🍽 Browse Menu'], async (ctx) => {
   const categories = await getCategories()
 
   if (!categories.length) {
-    return ctx.reply('No menu items available right now. Check back soon!')
+    return ctx.reply('ما في أصناف متاحة هسة. رجع لاحقاً!')
   }
 
   const buttons = categories.map(c =>
@@ -735,7 +735,7 @@ bot.hears(['🍽 تصفح المنيو', '🍽 Browse Menu'], async (ctx) => {
   )
 
   return ctx.reply(
-    '📋 *Our Menu*\n\nChoose a category:',
+    '📋 *منيونا*\n\nاختار الفئة:',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons)
@@ -748,7 +748,7 @@ bot.action(/^cat_(.+)$/, async (ctx) => {
   const items = await getItemsByCategory(categoryId)
 
   if (!items.length) {
-    return ctx.answerCbQuery('No items in this category right now.')
+    return ctx.answerCbQuery('ما في وجبات بهاي الفئة هسة.')
   }
 
   await ctx.answerCbQuery()
@@ -768,11 +768,11 @@ bot.action(/^add_(.+)$/, async (ctx) => {
   const itemId = ctx.match[1]
   const menuItem = await getMenuItem(itemId)
 
-  if (!menuItem) return ctx.answerCbQuery('Item not found.')
+  if (!menuItem) return ctx.answerCbQuery('ما لقينا الوجبة.')
 
   const user = await getOrCreateUser(ctx.from.id)
   await addItemToCart(user.id, menuItem)
-  await ctx.answerCbQuery(`✅ ${menuItem.name} added to cart!`)
+  await ctx.answerCbQuery(`✅ ${menuItem.name} انضاف للسلة!`)
 })
 
 // ─── CART ────────────────────────────────────────────────────
@@ -783,7 +783,7 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
 
   if (!cart || !cart.order_items?.length) {
     return ctx.reply(
-      '🛒 Your cart is empty.\n\nBrowse the menu to add items!',
+      '🛒 سلتك فاضية.\n\nتصفح المنيو وأضف وجبات!',
       Markup.keyboard([
         ['🍽 تصفح المنيو', '🛒 سلتي'],
         ['📦 طلباتي', '❓ مساعدة']
@@ -800,7 +800,7 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
   ])
 
   await ctx.reply(
-    `🛒 *Your Cart*\n\n${summary}\n\n*Total: ${total.toFixed(2)} IQD*`,
+    `🛒 *سلتك*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} IQD*`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
@@ -815,15 +815,15 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
 bot.action(/^remove_(.+)$/, async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   await removeItemFromCart(user.id, ctx.match[1])
-  await ctx.answerCbQuery('Item removed.')
+  await ctx.answerCbQuery('تم الحذف.')
   await ctx.deleteMessage()
 })
 
 bot.action('clear_cart', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   await clearCart(user.id)
-  await ctx.answerCbQuery('Cart cleared.')
-  await ctx.editMessageText('🗑 Your cart has been cleared.')
+  await ctx.answerCbQuery('تم التفريغ.')
+  await ctx.editMessageText('🗑 تم تفريغ سلتك.')
 })
 
 // ─── CONFIRM ORDER → PICK SLOT ───────────────────────────────
@@ -833,18 +833,18 @@ bot.action('confirm_order', async (ctx) => {
   const slots = await getAvailableSlots()
 
   if (!slots.length) {
-    return ctx.reply('⚠️ No pickup slots available right now. Please try again later.')
+    return ctx.reply('⚠️ ما في أوقات استلام متاحة هسة. جرب بعدين.')
   }
 
   const buttons = slots.map(s => [
     Markup.button.callback(
-      `🕐 ${s.label} — ${s.spots_left} spot${s.spots_left !== 1 ? 's' : ''} left`,
+      `🕐 ${s.label} — ${s.spots_left} مكان متبقي`,
       `slot_${s.id}`
     )
   ])
 
   await ctx.reply(
-    '📅 *Choose a pickup time:*',
+    '📅 *اختار وقت الاستلام:*',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons)
@@ -858,7 +858,7 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
   const cart = await getCart(user.id)
 
   if (!cart || !cart.order_items?.length) {
-    return ctx.answerCbQuery('Your cart is empty.')
+    return ctx.answerCbQuery('سلتك فاضية.')
   }
 
   await ctx.answerCbQuery()
@@ -875,11 +875,11 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
   }
 
   await ctx.reply(
-    `✅ *Order Confirmed!*\n\n` +
-    `🎫 Your Order Code: *${order.order_code}*\n` +
-    `🕐 Pickup Time: *${slot?.label || 'N/A'}*\n\n` +
-    `Show this code at the counter when you arrive.\n` +
-    `You'll get a notification when your order is ready!`,
+    `✅ *تم تأكيد طلبك!*\n\n` +
+    `🎫 رمز طلبك: *${order.order_code}*\n` +
+    `🕐 وقت الاستلام: *${slot?.label || 'N/A'}*\n\n` +
+    `وريهم هذا الرمز عند الكاونتر لمن توصل.\n` +
+    `راح تجيك إشعار لما يجهز طلبك!`,
     { parse_mode: 'Markdown' }
   )
 
@@ -901,11 +901,11 @@ bot.hears(['📦 طلباتي', '📦 My Orders'], async (ctx) => {
 
   if (error) {
     console.error('Error fetching orders:', error.message)
-    return ctx.reply('⚠️ Could not load your orders. Please try again.')
+    return ctx.reply('⚠️ ما قدرنا نحمل طلباتك. جرب ثاني.')
   }
 
   if (!orders?.length) {
-    return ctx.reply('You have no past orders yet.')
+    return ctx.reply('ما عندك طلبات سابقة.')
   }
 
   const statusEmoji = {
@@ -916,12 +916,20 @@ bot.hears(['📦 طلباتي', '📦 My Orders'], async (ctx) => {
     cancelled: '❌'
   }
 
+  const statusAr = {
+    confirmed: 'مؤكد',
+    preparing: 'يتحضر',
+    ready: 'جاهز',
+    picked_up: 'تم الاستلام',
+    cancelled: 'ملغي'
+  }
+
   const text = orders.map(o =>
-    `${statusEmoji[o.status] || '•'} *${o.order_code}* — ${o.status.toUpperCase()}\n` +
+    `${statusEmoji[o.status] || '•'} *${o.order_code}* — ${statusAr[o.status] || o.status}\n` +
     `🕐 ${o.pickup_slots?.label || 'N/A'} | 💰 ${o.total_amount?.toFixed(2)} IQD`
   ).join('\n\n')
 
-  await ctx.reply(`📦 *Your Recent Orders*\n\n${text}`, { parse_mode: 'Markdown' })
+  await ctx.reply(`📦 *طلباتك الأخيرة*\n\n${text}`, { parse_mode: 'Markdown' })
 })
 
 // ═══════════════════════════════════════════════════════════
@@ -935,16 +943,17 @@ bot.hears(['📋 الطلبات النشطة', '📋 Active Orders'], async (ctx
   const orders = await getPendingOrders()
 
   if (!orders.length) {
-    return ctx.reply('✅ No active orders right now.')
+    return ctx.reply('✅ ما في طلبات نشطة هسة.')
   }
 
   for (const order of orders) {
     const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
+    const statusAr = { confirmed: 'مؤكد', preparing: 'يتحضر', ready: 'جاهز', picked_up: 'تم الاستلام', cancelled: 'ملغي' }
     const text =
       `🎫 *${order.order_code}*\n` +
-      `👤 Token: ${order.users?.anonymous_token}\n` +
-      `🕐 Pickup: ${order.pickup_slots?.label}\n` +
-      `📋 Status: ${order.status.toUpperCase()}\n\n` +
+      `👤 المستخدم: ${order.users?.anonymous_token}\n` +
+      `🕐 وقت الاستلام: ${order.pickup_slots?.label}\n` +
+      `📋 الحالة: ${statusAr[order.status] || order.status}\n\n` +
       `${items}`
 
     const buttons = []
@@ -975,8 +984,9 @@ bot.action(/^status_(.+)_(confirmed|preparing|ready|picked_up|cancelled)$/, asyn
   const order = await updateOrderStatus(orderId, newStatus)
   await ctx.answerCbQuery(`Order marked as ${newStatus}`)
 
-  let newText = ctx.callbackQuery.message.text.replace(/\n\n✅ Updated to:[\s\S]*$/, '')
-  newText += `\n\n✅ Updated to: *${newStatus.replace(/_/g, ' ').toUpperCase()}*`
+  let newText = ctx.callbackQuery.message.text.replace(/\n\n✅ (تم التحديث إلى:|Updated to:)[\s\S]*$/, '')
+  const statusAr = { preparing: 'يتحضر', ready: 'جاهز', picked_up: 'تم الاستلام', cancelled: 'ملغي', confirmed: 'مؤكد' }
+  newText += `\n\n✅ تم التحديث إلى: *${statusAr[newStatus] || newStatus}*`
 
   const buttons = []
   if (newStatus === 'preparing') {
@@ -999,7 +1009,7 @@ bot.action(/^status_(.+)_(confirmed|preparing|ready|picked_up|cancelled)$/, asyn
 bot.hears(['🔍 البحث عن طلب', '🔍 Look Up Order'], async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (!role) return ctx.reply('⛔ Unauthorized.')
-  await ctx.reply('Enter the order code (e.g. ORD-4A2B1):')
+  await ctx.reply('أدخل رمز الطلب (مثال: ORD-4A2B1):')
 })
 
 // ═══════════════════════════════════════════════════════════
@@ -1020,21 +1030,21 @@ bot.command('status', async (ctx) => {
 
   if (error) {
     console.error('Error fetching active order:', error.message)
-    return ctx.reply('⚠️ Could not load your order. Please try again.')
+    return ctx.reply('⚠️ ما قدرنا نحمل طلبك. جرب ثاني.')
   }
 
-  if (!order) return ctx.reply('You have no active orders right now.')
+  if (!order) return ctx.reply('ما عندك طلبات نشطة هسة.')
 
   const statusEmoji = {
-    confirmed: '✅ Confirmed — waiting to be prepared',
-    preparing: '👨‍🍳 Being prepared now!',
-    ready: '🔔 READY — come pick it up!'
+    confirmed: '✅ مؤكد — ينتظر التحضير',
+    preparing: '👨‍🍳 يتحضر هسة!',
+    ready: '🔔 جاهز — تعال خذه!'
   }
 
   await ctx.reply(
-    `📦 *Order ${order.order_code}*\n\n` +
+    `📦 *الطلب ${order.order_code}*\n\n` +
     `${statusEmoji[order.status]}\n` +
-    `🕐 Pickup slot: ${order.pickup_slots?.label}`,
+    `🕐 وقت الاستلام: ${order.pickup_slots?.label}`,
     { parse_mode: 'Markdown' }
   )
 })
@@ -1074,7 +1084,7 @@ bot.command('cart', async (ctx) => {
   const cart = await getCart(user.id)
 
   if (!cart || !cart.order_items?.length) {
-    return ctx.reply('🛒 Your cart is empty.\n\nBrowse the menu to add items!')
+    return ctx.reply('🛒 سلتك فاضية.\n\nتصفح المنيو وأضف وجبات!')
   }
 
   const items = cart.order_items
@@ -1082,31 +1092,31 @@ bot.command('cart', async (ctx) => {
   const summary = formatOrderSummary(cart, items)
 
   await ctx.reply(
-    `🛒 *Your Cart*\n\n${summary}\n\n*Total: ${total.toFixed(2)} IQD*`,
+    `🛒 *سلتك*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} IQD*`,
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    `*Corner Bot Help*\n\n` +
-    `🍽 *Browse Menu* — See today's available items\n` +
-    `🛒 *My Cart* — View and manage your cart\n` +
-    `📦 *My Orders* — Track your order status\n\n` +
-    `After placing an order you'll receive a *4-digit code*. Show it at the counter at your chosen pickup time.\n\n` +
-    `Questions? Visit us at the Corner container on campus! 🌽`,
+    `*مساعدة - Corner Bot*\n\n` +
+    `🍽 *تصفح المنيو* — شوف الوجبات المتاحة اليوم\n` +
+    `🛒 *سلتي* — شوف وادر سلتك\n` +
+    `📦 *طلباتي* — تابع حالة طلبك\n\n` +
+    `بعد ما تطلب راح تجيك *رمز*. وريه عند الكاونتر بوقت الاستلام.\n\n` +
+    `عندك أسئلة؟ زورنا بـ Corner بالحرم الجامعي! 🌽`,
     { parse_mode: 'Markdown' }
   )
 })
 
 bot.hears(['❓ مساعدة', '❓ Help'], async (ctx) => {
   await ctx.reply(
-    `*Corner Bot Help*\n\n` +
-    `🍽 *Browse Menu* — See today's available items\n` +
-    `🛒 *My Cart* — View and manage your cart\n` +
-    `📦 *My Orders* — Track your order status\n\n` +
-    `After placing an order you'll receive a *4-digit code*. Show it at the counter at your chosen pickup time.\n\n` +
-    `Questions? Visit us at the Corner container on campus! 🌽`,
+    `*مساعدة - Corner Bot*\n\n` +
+    `🍽 *تصفح المنيو* — شوف الوجبات المتاحة اليوم\n` +
+    `🛒 *سلتي* — شوف وادر سلتك\n` +
+    `📦 *طلباتي* — تابع حالة طلبك\n\n` +
+    `بعد ما تطلب راح تجيك *رمز*. وريه عند الكاونتر بوقت الاستلام.\n\n` +
+    `عندك أسئلة؟ زورنا بـ Corner بالحرم الجامعي! 🌽`,
     { parse_mode: 'Markdown' }
   )
 })
@@ -1127,12 +1137,13 @@ bot.on('text', async (ctx) => {
       const role = await getStaffRole(userId)
       if (!role) return
       const order = await getOrderByCode(text)
-      if (!order) return ctx.reply('❌ Order not found.')
+      if (!order) return ctx.reply('❌ ما لقينا الطلب.')
       const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n')
+      const statusAr = { confirmed: 'مؤكد', preparing: 'يتحضر', ready: 'جاهز', picked_up: 'تم الاستلام', cancelled: 'ملغي' }
       return ctx.reply(
         `🎫 *${order.order_code}*\n` +
-        `🕐 Pickup: ${order.pickup_slots?.label}\n` +
-        `📋 Status: ${order.status.toUpperCase()}\n\n` +
+        `🕐 وقت الاستلام: ${order.pickup_slots?.label}\n` +
+        `📋 الحالة: ${statusAr[order.status] || order.status}\n\n` +
         `${items}`,
         { parse_mode: 'Markdown' }
       )
@@ -1365,9 +1376,9 @@ async function notifyCashiers(bot, order) {
 
     const items = orderDetails?.order_items?.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || ''
     const message =
-      `🔔 *New Order!*\n\n` +
+      `🔔 *طلب جديد!*\n\n` +
       `🎫 *${order.order_code}*\n` +
-      `🕐 Pickup: ${orderDetails?.pickup_slots?.label || 'N/A'}\n` +
+      `🕐 وقت الاستلام: ${orderDetails?.pickup_slots?.label || 'N/A'}\n` +
       `💰 ${order.total_amount?.toFixed(2)} IQD\n\n` +
       `${items}`
 
@@ -1389,9 +1400,9 @@ async function notifyCashiers(bot, order) {
 async function notifyStudent(bot, order, status) {
   try {
     const messages = {
-      preparing: '👨‍🍳 Your order is being prepared!',
-      ready: `🔔 Your order *${order.order_code}* is READY for pickup! Head over now. 🌽`,
-      cancelled: `❌ Your order *${order.order_code}* was cancelled. Please contact us.`
+      preparing: '👨‍🍳 طلبك صار يتحضر!',
+      ready: `🔔 طلبك *${order.order_code}* جاهز للاستلام! تعال هسة. 🌽`,
+      cancelled: `❌ طلبك *${order.order_code}* تم إلغاؤه. تواصل ويانا.`
     }
 
     const msg = messages[status]
