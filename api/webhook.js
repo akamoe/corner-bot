@@ -484,9 +484,41 @@ bot.hears('👤 Manage Staff', async (ctx) => {
   if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
 
   await ctx.reply(
-    '👤 *Staff Management*\n\n' +
-    '• To *add* a cashier, send: `/addcashier`\n' +
-    '• To *remove* a cashier, send: `/removecashier`',
+    '👤 *Staff Management*\n\nChoose an action:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('➕ Add Cashier', 'add_cashier_btn')],
+        [Markup.button.callback('🗑 Remove Cashier', 'remove_cashier_btn')]
+      ])
+    }
+  )
+})
+
+// Inline button handlers for Manage Staff
+bot.action('add_cashier_btn', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+
+  await ctx.answerCbQuery()
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
+  await ctx.editMessageText(
+    '👤 *Add Cashier*\n\n' +
+    'Step 1 of 2: Please send the cashier\'s *Telegram ID* (numeric).\n\n' +
+    '💡 Tip: Ask them to message @userinfobot to get their ID.',
+    { parse_mode: 'Markdown' }
+  )
+})
+
+bot.action('remove_cashier_btn', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+
+  await ctx.answerCbQuery()
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
+  await ctx.editMessageText(
+    '🗑 *Remove Cashier*\n\n' +
+    'Please send the cashier\'s *Telegram ID* to remove.',
     { parse_mode: 'Markdown' }
   )
 })
