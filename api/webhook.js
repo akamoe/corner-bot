@@ -723,7 +723,7 @@ async function showAnalytics(ctx, days) {
 
 // ─── BROWSE MENU ─────────────────────────────────────────────
 
-bot.hears('🍽 تصفح المنيو', async (ctx) => {
+bot.hears(['🍽 تصفح المنيو', '🍽 Browse Menu'], async (ctx) => {
   const categories = await getCategories()
 
   if (!categories.length) {
@@ -777,7 +777,7 @@ bot.action(/^add_(.+)$/, async (ctx) => {
 
 // ─── CART ────────────────────────────────────────────────────
 
-bot.hears('🛒 سلتي', async (ctx) => {
+bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   const cart = await getCart(user.id)
 
@@ -888,7 +888,7 @@ bot.action(/^slot_(.+)$/, async (ctx) => {
 
 // ─── MY ORDERS ───────────────────────────────────────────────
 
-bot.hears('📦 طلباتي', async (ctx) => {
+bot.hears(['📦 طلباتي', '📦 My Orders'], async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
 
   const { data: orders, error } = await supabase
@@ -928,7 +928,7 @@ bot.hears('📦 طلباتي', async (ctx) => {
 // CASHIER HANDLERS
 // ═══════════════════════════════════════════════════════════
 
-bot.hears('📋 الطلبات النشطة', async (ctx) => {
+bot.hears(['📋 الطلبات النشطة', '📋 Active Orders'], async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (!role) return ctx.reply('⛔ Unauthorized.')
 
@@ -996,7 +996,7 @@ bot.action(/^status_(.+)_(confirmed|preparing|ready|picked_up|cancelled)$/, asyn
   await notifyStudent(bot, order, newStatus)
 })
 
-bot.hears('🔍 البحث عن طلب', async (ctx) => {
+bot.hears(['🔍 البحث عن طلب', '🔍 Look Up Order'], async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (!role) return ctx.reply('⛔ Unauthorized.')
   await ctx.reply('Enter the order code (e.g. ORD-4A2B1):')
@@ -1099,7 +1099,7 @@ bot.command('help', async (ctx) => {
   )
 })
 
-bot.hears('❓ مساعدة', async (ctx) => {
+bot.hears(['❓ مساعدة', '❓ Help'], async (ctx) => {
   await ctx.reply(
     `*Corner Bot Help*\n\n` +
     `🍽 *Browse Menu* — See today's available items\n` +
