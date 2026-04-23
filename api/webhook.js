@@ -989,7 +989,7 @@ bot.action(/^status_(.+)_(.+)$/, async (ctx) => {
     newText,
     {
       parse_mode: 'Markdown',
-      ...(buttons.length ? Markup.inlineKeyboard(buttons) : {})
+      ...Markup.inlineKeyboard(buttons)
     }
   )
 
