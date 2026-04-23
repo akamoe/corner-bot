@@ -421,6 +421,7 @@ bot.command('addcashier', async (ctx) => {
 
   const { error } = await supabase.from('staff').upsert({
     telegram_hash: hash,
+    telegram_id: String(telegramId),
     telegram_username: username,
     role: 'cashier',
     is_active: true
