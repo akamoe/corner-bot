@@ -3,8 +3,9 @@ import { Telegraf, Markup } from 'telegraf'
 import { getOrCreateUser, getStaffRole, hashTelegramId } from '../lib/auth.js'
 import { getCategories, getItemsByCategory, getMenuItem } from '../lib/menu.js'
 import { getAvailableSlots } from '../lib/slots.js'
-import { getCart, addItemToCart, removeItemFromCart, clearCart } from '../lib/cart.js'
+import { getCart, addItemToCart, removeItemFromCart, clearCart, updateCartItemQuantity } from '../lib/cart.js'
 import { confirmOrder, updateOrderStatus, getOrderByCode, getPendingOrders } from '../lib/orders.js'
+import { getItemToppingGroups, getAllToppings, getAllGroups, parseCustomization, stringifyCustomization } from '../lib/toppings.js'
 import supabase from '../lib/supabase.js'
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
@@ -12,11 +13,20 @@ const bot = new Telegraf(process.env.BOT_TOKEN)
 // Simple in-memory state for admin multi-step flows
 const adminFlowState = new Map()
 
+// === NEW === In-memory state for user ordering flow (customization + quantity)
+const orderFlowState = new Map()
+
 // Register commands with Telegram so they show in the / menu
 bot.telegram.setMyCommands([
   { command: 'start', description: 'Start the bot' },
   { command: 'addcashier', description: 'Add a cashier (admin only)' },
   { command: 'removecashier', description: 'Remove a cashier (admin only)' },
+  { command: 'add_category', description: 'Add a category (admin only)' },
+  { command: 'add_item', description: 'Add a menu item (admin only)' },
+  { command: 'add_topping', description: 'Add a topping (admin only)' },
+  { command: 'add_group', description: 'Add a topping group (admin only)' },
+  { command: 'assign_group_to_item', description: 'Assign group to item (admin only)' },
+  { command: 'assign_topping_to_group', description: 'Assign topping to group (admin only)' },
   { command: 'status', description: 'Check your active order' },
   { command: 'cart', description: 'View your cart' },
   { command: 'help', description: 'Show help' }
@@ -33,9 +43,47 @@ bot.catch((err, ctx) => {
 
 // ─── HELPERS ────────────────────────────────────────────────
 
+// === MODIFIED === formatOrderSummary now shows toppings from customization JSON
 function formatOrderSummary(order, items) {
-  const lines = items.map(i => `• ${i.item_name} x${i.quantity} — ${(i.item_price * i.quantity).toFixed(2)} IQD`)
+  const lines = items.map(i => {
+    const custom = parseCustomization(i.customization)
+    const toppingNames = custom.toppings.map(t => t.name).join(', ')
+    const toppingLine = toppingNames ? `   └ 🧀 ${toppingNames}` : ''
+    return `• ${i.item_name} x${i.quantity} — ${(i.item_price * i.quantity).toFixed(2)} IQD${toppingLine ? '\n' + toppingLine : ''}`
+  })
   return lines.join('\n')
+}
+
+// === NEW === Helper to build customization keyboard for a group
+function buildToppingKeyboard(group, selectedToppingIds) {
+  const buttons = group.toppings.map(t => {
+    const isSelected = selectedToppingIds.includes(t.id)
+    const prefix = isSelected ? '✅' : '⭕'
+    return [Markup.button.callback(`${prefix} ${t.name} (+${Number(t.price || 0).toFixed(2)} IQD)`, `toggle_topping_${t.id}`)]
+  })
+  return buttons
+}
+
+// === NEW === Helper to calculate final price with toppings
+function calculateFinalPrice(basePrice, selectedToppingIds, groups) {
+  let extra = 0
+  const allToppings = groups.flatMap(g => g.toppings)
+  for (const tid of selectedToppingIds) {
+    const t = allToppings.find(x => x.id === tid)
+    if (t) extra += Number(t.price || 0)
+  }
+  return basePrice + extra
+}
+
+// === NEW === Helper to validate required groups are satisfied
+function validateRequiredGroups(groups, selectedToppingIds) {
+  for (const g of groups) {
+    if (g.required) {
+      const hasSelection = g.toppings.some(t => selectedToppingIds.includes(t.id))
+      if (!hasSelection) return false
+    }
+  }
+  return true
 }
 
 function isoDay(date) {
@@ -69,6 +117,7 @@ bot.start(async (ctx) => {
 
   // Cancel any running admin flow when /start is hit
   adminFlowState.delete(ctx.from.id)
+  orderFlowState.delete(ctx.from.id) // === NEW ===
 
   if (role === 'admin') {
     return ctx.reply(
@@ -238,7 +287,12 @@ async function showMenuManagement(ctx) {
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📖 View / Edit Menu', 'menu_view')],
         [Markup.button.callback('➕ Add Item', 'menu_add_item')],
-        [Markup.button.callback('➕ Add Category', 'menu_add_category')]
+        [Markup.button.callback('➕ Add Category', 'menu_add_category')],
+        // === NEW ===
+        [Markup.button.callback('🧀 Add Topping', 'menu_add_topping')],
+        [Markup.button.callback('📦 Add Topping Group', 'menu_add_group')],
+        [Markup.button.callback('🔗 Assign Group → Item', 'menu_assign_group')],
+        [Markup.button.callback('🔗 Assign Topping → Group', 'menu_assign_topping')]
       ])
     }
   )
@@ -408,6 +462,98 @@ bot.action(/^addtocat_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
   adminFlowState.set(ctx.from.id, { step: 'awaiting_new_item_name', categoryId: ctx.match[1] })
   await ctx.reply('➕ Send the *name* of the new item.', { parse_mode: 'Markdown' })
+})
+
+// === NEW === Admin: Add Topping inline flow
+bot.action('menu_add_topping', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_name' })
+  await ctx.reply('🧀 Send the *name* of the new topping.', { parse_mode: 'Markdown' })
+})
+
+// === NEW === Admin: Add Group inline flow
+bot.action('menu_add_group', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_group_name' })
+  await ctx.reply('📦 Send the *name* of the new topping group.', { parse_mode: 'Markdown' })
+})
+
+// === NEW === Admin: Assign Group to Item inline flow
+bot.action('menu_assign_group', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+
+  const { data: items } = await supabase.from('menu_items').select('id, name').eq('is_available', true).order('name')
+  if (!items?.length) return ctx.reply('No items available.')
+
+  const buttons = items.map(i => [Markup.button.callback(i.name, `assigngrp_item_${i.id}`)])
+  await ctx.reply('Select an item to assign a group to:', Markup.inlineKeyboard(buttons))
+})
+
+bot.action(/^assigngrp_item_(.+)$/, async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  const itemId = ctx.match[1]
+
+  const { data: groups } = await supabase.from('topping_groups').select('id, name').order('name')
+  if (!groups?.length) return ctx.reply('No topping groups exist. Create one first.')
+
+  const buttons = groups.map(g => [Markup.button.callback(g.name, `assigngrp_group_${itemId}_${g.id}`)])
+  await ctx.reply('Select a group to assign:', Markup.inlineKeyboard(buttons))
+})
+
+bot.action(/^assigngrp_group_(.+)_(.+)$/, async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  const [, itemId, groupId] = ctx.match
+
+  const { error } = await supabase.from('item_topping_groups').insert({ menu_item_id: itemId, group_id: groupId })
+  if (error) return ctx.reply(`❌ ${error.message}`)
+  await ctx.reply('✅ Group assigned to item.')
+})
+
+// === NEW === Admin: Assign Topping to Group inline flow
+bot.action('menu_assign_topping', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+
+  const { data: groups } = await supabase.from('topping_groups').select('id, name').order('name')
+  if (!groups?.length) return ctx.reply('No topping groups exist.')
+
+  const buttons = groups.map(g => [Markup.button.callback(g.name, `assignt_group_${g.id}`)])
+  await ctx.reply('Select a group:', Markup.inlineKeyboard(buttons))
+})
+
+bot.action(/^assignt_group_(.+)$/, async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  const groupId = ctx.match[1]
+
+  const { data: toppings } = await supabase.from('toppings').select('id, name').eq('is_active', true).order('name')
+  if (!toppings?.length) return ctx.reply('No toppings available.')
+
+  const buttons = toppings.map(t => [Markup.button.callback(t.name, `assignt_top_${groupId}_${t.id}`)])
+  await ctx.reply('Select a topping to add to this group:', Markup.inlineKeyboard(buttons))
+})
+
+bot.action(/^assignt_top_(.+)_(.+)$/, async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  const [, groupId, toppingId] = ctx.match
+
+  const { error } = await supabase.from('topping_group_options').insert({ group_id: groupId, topping_id: toppingId })
+  if (error) return ctx.reply(`❌ ${error.message}`)
+  await ctx.reply('✅ Topping assigned to group.')
 })
 
 // ─── ADMIN: MANAGE STAFF ─────────────────────────────────────
@@ -743,6 +889,7 @@ bot.hears(['🍽 تصفح المنيو', '🍽 Browse Menu'], async (ctx) => {
   )
 })
 
+// === MODIFIED === cat_ now shows items with "Customize" button instead of direct add
 bot.action(/^cat_(.+)$/, async (ctx) => {
   const categoryId = ctx.match[1]
   const items = await getItemsByCategory(categoryId)
@@ -758,12 +905,210 @@ bot.action(/^cat_(.+)$/, async (ctx) => {
     await ctx.reply(text, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('➕ أضف للسلة', `add_${item.id}`)],
+        [Markup.button.callback('⚙️ تخصيص الوجبة', `item_${item.id}`)],
       ])
     })
   }
 })
 
+// === NEW === User selects an item → start customization flow
+bot.action(/^item_(.+)$/, async (ctx) => {
+  const itemId = ctx.match[1]
+  const menuItem = await getMenuItem(itemId)
+
+  if (!menuItem) return ctx.answerCbQuery('ما لقينا الوجبة.')
+
+  await ctx.answerCbQuery()
+
+  const groups = await getItemToppingGroups(itemId)
+
+  // Initialize order flow state
+  orderFlowState.set(ctx.from.id, {
+    step: 'customizing',
+    itemId: menuItem.id,
+    itemName: menuItem.name,
+    basePrice: Number(menuItem.price),
+    selectedToppings: [],
+    quantity: 1,
+    groups
+  })
+
+  await sendCustomizationMessage(ctx, ctx.from.id)
+})
+
+// === NEW === Send/refresh the customization UI message
+async function sendCustomizationMessage(ctx, userId) {
+  const state = orderFlowState.get(userId)
+  if (!state || state.step !== 'customizing') return
+
+  const { itemName, basePrice, selectedToppings, quantity, groups } = state
+  const finalPrice = calculateFinalPrice(basePrice, selectedToppings, groups)
+
+  let text = `⚙️ *${itemName}*\n💰 السعر: ${finalPrice.toFixed(2)} IQD × ${quantity} = *${(finalPrice * quantity).toFixed(2)} IQD*\n\n`
+
+  const keyboard = []
+
+  for (const group of groups) {
+    text += `📦 *${group.name}* ${group.required ? '(مطلوب)' : ''} [${group.selection_type === 'single' ? 'اختيار واحد' : 'متعدد'}]\n`
+
+    for (const t of group.toppings) {
+      const isSelected = selectedToppings.includes(t.id)
+      text += `${isSelected ? '✅' : '○'} ${t.name} ${Number(t.price || 0) > 0 ? `(+${Number(t.price).toFixed(2)} IQD)` : ''}\n`
+    }
+
+    text += '\n'
+
+    // Add toggle buttons for this group
+    for (const t of group.toppings) {
+      const isSelected = selectedToppings.includes(t.id)
+      const label = `${isSelected ? '✅' : '⭕'} ${t.name}`
+      keyboard.push([Markup.button.callback(label, `toggle_topping_${t.id}`)])
+    }
+  }
+
+  if (groups.length === 0) {
+    text += '(ماكو إضافات متاحة)\n\n'
+  }
+
+  // Quantity controls
+  keyboard.push([
+    Markup.button.callback('➖', 'qty_down'),
+    Markup.button.callback(`الكمية: ${quantity}`, 'qty_noop'),
+    Markup.button.callback('➕', 'qty_up')
+  ])
+
+  // Confirm button (disabled if required groups not satisfied)
+  const canConfirm = validateRequiredGroups(groups, selectedToppings)
+  if (canConfirm) {
+    keyboard.push([Markup.button.callback('✅ أضف للسلة', 'confirm_item')])
+  } else {
+    keyboard.push([Markup.button.callback(' أكمل الاختيارات المطلوبة', 'confirm_item_disabled')])
+  }
+
+  keyboard.push([Markup.button.callback('❌ إلغاء', 'cancel_customize')])
+
+  // Try to edit existing message, otherwise send new
+  try {
+    if (ctx.callbackQuery?.message) {
+      await ctx.editMessageText(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(keyboard)
+      })
+    } else {
+      await ctx.reply(text, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(keyboard)
+      })
+    }
+  } catch (err) {
+    // If edit fails (e.g. message unchanged), just answer cb
+    await ctx.reply(text, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(keyboard)
+    })
+  }
+}
+
+// === NEW === Toggle topping selection
+bot.action(/^toggle_topping_(.+)$/, async (ctx) => {
+  const toppingId = ctx.match[1]
+  const userId = ctx.from.id
+  const state = orderFlowState.get(userId)
+
+  if (!state || state.step !== 'customizing') {
+    return ctx.answerCbQuery('انتهت الجلسة. ابدأ من جديد.')
+  }
+
+  const group = state.groups.find(g => g.toppings.some(t => t.id === toppingId))
+  if (!group) return ctx.answerCbQuery('Topping not found.')
+
+  const isSelected = state.selectedToppings.includes(toppingId)
+
+  if (isSelected) {
+    // Deselect
+    state.selectedToppings = state.selectedToppings.filter(id => id !== toppingId)
+  } else {
+    // Select — if single-selection group, deselect others in same group first
+    if (group.selection_type === 'single') {
+      const groupToppingIds = group.toppings.map(t => t.id)
+      state.selectedToppings = state.selectedToppings.filter(id => !groupToppingIds.includes(id))
+    }
+    state.selectedToppings.push(toppingId)
+  }
+
+  await ctx.answerCbQuery(isSelected ? 'تم الإلغاء' : 'تم الاختيار')
+  await sendCustomizationMessage(ctx, userId)
+})
+
+// === NEW === Quantity controls
+bot.action('qty_up', async (ctx) => {
+  const state = orderFlowState.get(ctx.from.id)
+  if (!state || state.step !== 'customizing') return ctx.answerCbQuery('Session expired.')
+  state.quantity += 1
+  await ctx.answerCbQuery(`الكمية: ${state.quantity}`)
+  await sendCustomizationMessage(ctx, ctx.from.id)
+})
+
+bot.action('qty_down', async (ctx) => {
+  const state = orderFlowState.get(ctx.from.id)
+  if (!state || state.step !== 'customizing') return ctx.answerCbQuery('Session expired.')
+  if (state.quantity > 1) {
+    state.quantity -= 1
+    await ctx.answerCbQuery(`الكمية: ${state.quantity}`)
+  } else {
+    await ctx.answerCbQuery('الحد الأدنى 1')
+  }
+  await sendCustomizationMessage(ctx, ctx.from.id)
+})
+
+bot.action('qty_noop', async (ctx) => ctx.answerCbQuery())
+bot.action('confirm_item_disabled', async (ctx) => ctx.answerCbQuery('أكمل الاختيارات المطلوبة أولاً'))
+
+// === NEW === Confirm customization and add to cart
+bot.action('confirm_item', async (ctx) => {
+  const userId = ctx.from.id
+  const state = orderFlowState.get(userId)
+
+  if (!state || state.step !== 'customizing') {
+    return ctx.answerCbQuery('انتهت الجلسة.')
+  }
+
+  if (!validateRequiredGroups(state.groups, state.selectedToppings)) {
+    return ctx.answerCbQuery('أكمل الاختيارات المطلوبة.')
+  }
+
+  const { itemId, itemName, basePrice, selectedToppings, quantity, groups } = state
+  const finalPrice = calculateFinalPrice(basePrice, selectedToppings, groups)
+
+  // Build toppings array for customization JSON
+  const allToppings = groups.flatMap(g => g.toppings)
+  const selectedToppingsData = selectedToppings.map(tid => {
+    const t = allToppings.find(x => x.id === tid)
+    return { id: tid, name: t.name, price: Number(t.price || 0) }
+  })
+
+  const customization = stringifyCustomization(selectedToppingsData)
+
+  const menuItem = { id: itemId, name: itemName, price: finalPrice }
+  const user = await getOrCreateUser(userId)
+  await addItemToCart(user.id, menuItem, quantity, customization)
+
+  orderFlowState.delete(userId)
+
+  await ctx.answerCbQuery(`✅ ${itemName} انضاف للسلة!`)
+  await ctx.editMessageText(
+    `✅ *${itemName}* أُضيف للسلة!\nالكمية: ${quantity}\nالسعر: ${(finalPrice * quantity).toFixed(2)} IQD`,
+    { parse_mode: 'Markdown' }
+  )
+})
+
+bot.action('cancel_customize', async (ctx) => {
+  orderFlowState.delete(ctx.from.id)
+  await ctx.answerCbQuery('تم الإلغاء.')
+  await ctx.editMessageText('❌ تم الإلغاء.')
+})
+
+// === MODIFIED === Keep old add_ handler for backward compatibility (items without groups)
 bot.action(/^add_(.+)$/, async (ctx) => {
   const itemId = ctx.match[1]
   const menuItem = await getMenuItem(itemId)
@@ -777,6 +1122,7 @@ bot.action(/^add_(.+)$/, async (ctx) => {
 
 // ─── CART ────────────────────────────────────────────────────
 
+// === MODIFIED === Cart now shows toppings and per-item controls
 bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   const cart = await getCart(user.id)
@@ -795,26 +1141,70 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
   const total = items.reduce((s, i) => s + i.item_price * i.quantity, 0)
   const summary = formatOrderSummary(cart, items)
 
-  const removeButtons = items.map(i => [
-    Markup.button.callback(`❌ إزالة ${i.item_name}`, `remove_${i.id}`)
-  ])
-
   await ctx.reply(
     `🛒 *سلتك*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} IQD*`,
-    {
+    { parse_mode: 'Markdown' }
+  )
+
+  // === NEW === Send each cart item as a separate message with controls
+  for (const i of items) {
+    const custom = parseCustomization(i.customization)
+    const toppingNames = custom.toppings.map(t => t.name).join(', ')
+    let text = `• ${i.item_name}\n`
+    if (toppingNames) text += `  🧀 ${toppingNames}\n`
+    text += `  💰 ${i.item_price.toFixed(2)} IQD × ${i.quantity}`
+
+    await ctx.reply(text, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        ...removeButtons,
-        [Markup.button.callback('✅ تأكيد الطلب', 'confirm_order')],
-        [Markup.button.callback('🗑 تفريغ السلة', 'clear_cart')]
+        [
+          Markup.button.callback('➕', `cart_qty_up_${i.id}`),
+          Markup.button.callback('➖', `cart_qty_down_${i.id}`),
+          Markup.button.callback('❌ إزالة', `remove_item_${i.id}`)
+        ]
       ])
-    }
+    })
+  }
+
+  await ctx.reply(
+    'استمر بالتعديل أو أكد الطلب:',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('✅ تأكيد الطلب', 'confirm_order')],
+      [Markup.button.callback('🗑 تفريغ السلة', 'clear_cart')]
+    ])
   )
 })
 
+// === MODIFIED === remove_ still works for backward compatibility
 bot.action(/^remove_(.+)$/, async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   await removeItemFromCart(user.id, ctx.match[1])
+  await ctx.answerCbQuery('تم الحذف.')
+  await ctx.deleteMessage()
+})
+
+// === NEW === Per-item cart controls
+bot.action(/^cart_qty_up_(.+)$/, async (ctx) => {
+  const orderItemId = ctx.match[1]
+  await updateCartItemQuantity(orderItemId, 1)
+  await ctx.answerCbQuery('تمت الزيادة.')
+  await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n✅ تم التحديث')
+})
+
+bot.action(/^cart_qty_down_(.+)$/, async (ctx) => {
+  const orderItemId = ctx.match[1]
+  const newQty = await updateCartItemQuantity(orderItemId, -1)
+  await ctx.answerCbQuery('تم النقصان.')
+  if (newQty === null) {
+    await ctx.deleteMessage()
+  } else {
+    await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n✅ تم التحديث')
+  }
+})
+
+bot.action(/^remove_item_(.+)$/, async (ctx) => {
+  const orderItemId = ctx.match[1]
+  await removeItemFromCart(null, orderItemId)
   await ctx.answerCbQuery('تم الحذف.')
   await ctx.deleteMessage()
 })
@@ -1054,6 +1444,10 @@ bot.command('cancel', async (ctx) => {
     adminFlowState.delete(ctx.from.id)
     return ctx.reply('❌ Cancelled.')
   }
+  if (orderFlowState.has(ctx.from.id)) {
+    orderFlowState.delete(ctx.from.id)
+    return ctx.reply('❌ Cancelled.')
+  }
   return ctx.reply('Nothing to cancel.')
 })
 
@@ -1077,6 +1471,65 @@ bot.command('removecashier', async (ctx) => {
     '🗑 *Remove Cashier*\n\nSend the cashier\'s *Telegram ID* to remove.',
     { parse_mode: 'Markdown' }
   )
+})
+
+// === NEW === Admin commands for toppings & groups
+bot.command('add_category', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_new_category_name' })
+  await ctx.reply('➕ Send the *name* of the new category (you can prefix with an emoji e.g. "🍕 Pizza").', { parse_mode: 'Markdown' })
+})
+
+bot.command('add_item', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+
+  const { data: cats } = await supabase.from('categories').select('*').order('sort_order')
+  if (!cats?.length) return ctx.reply('No categories exist. Add a category first.')
+
+  const buttons = cats.map(c => [Markup.button.callback(`${c.emoji || '🍴'} ${c.name}`, `addtocat_${c.id}`)])
+  await ctx.reply('Which category should the new item go in?', Markup.inlineKeyboard(buttons))
+})
+
+bot.command('add_topping', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_name' })
+  await ctx.reply('🧀 Send the *name* of the new topping.', { parse_mode: 'Markdown' })
+})
+
+bot.command('add_group', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  adminFlowState.set(ctx.from.id, { step: 'awaiting_group_name' })
+  await ctx.reply(
+    '📦 Send the *name* of the new topping group.\n\n' +
+    'Next you will choose:\n• selection_type: single / multiple\n• required: yes / no',
+    { parse_mode: 'Markdown' }
+  )
+})
+
+bot.command('assign_group_to_item', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+
+  const { data: items } = await supabase.from('menu_items').select('id, name').eq('is_available', true).order('name')
+  if (!items?.length) return ctx.reply('No items available.')
+
+  const buttons = items.map(i => [Markup.button.callback(i.name, `assigngrp_item_${i.id}`)])
+  await ctx.reply('Select an item to assign a group to:', Markup.inlineKeyboard(buttons))
+})
+
+bot.command('assign_topping_to_group', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+
+  const { data: groups } = await supabase.from('topping_groups').select('id, name').order('name')
+  if (!groups?.length) return ctx.reply('No topping groups exist.')
+
+  const buttons = groups.map(g => [Markup.button.callback(g.name, `assignt_group_${g.id}`)])
+  await ctx.reply('Select a group:', Markup.inlineKeyboard(buttons))
 })
 
 bot.command('cart', async (ctx) => {
@@ -1347,7 +1800,97 @@ bot.on('text', async (ctx) => {
     adminFlowState.delete(userId)
     return showAnalytics(ctx, n)
   }
+
+  // === NEW === TOPPING FLOWS ──────────────────────────────
+  if (flow.step === 'awaiting_topping_name') {
+    adminFlowState.set(userId, { step: 'awaiting_topping_price', name: text })
+    return ctx.reply('💲 Send the *price* for this topping (0 if free).', { parse_mode: 'Markdown' })
+  }
+
+  if (flow.step === 'awaiting_topping_price') {
+    const price = parseFloat(text)
+    if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
+    adminFlowState.set(userId, { step: 'awaiting_topping_tag', name: flow.name, price })
+    return ctx.reply('🏷 Send an optional *tag* (e.g. "extra", "sauce") or "-" for none.', { parse_mode: 'Markdown' })
+  }
+
+  if (flow.step === 'awaiting_topping_tag') {
+    const tag = text === '-' ? null : text
+    const { error } = await supabase.from('toppings').insert({
+      name: flow.name,
+      price: flow.price,
+      tag,
+      is_active: true
+    })
+    adminFlowState.delete(userId)
+    if (error) return ctx.reply(`❌ ${error.message}`)
+    return ctx.reply(`✅ Topping "${flow.name}" added.`)
+  }
+
+  // === NEW === GROUP FLOWS ────────────────────────────────
+  if (flow.step === 'awaiting_group_name') {
+    adminFlowState.set(userId, { step: 'awaiting_group_type', name: text })
+    return ctx.reply(
+      '📋 Choose selection type:\n\nsingle = only one can be selected\nmultiple = allow multiple selections',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('single', 'group_type_single')],
+        [Markup.button.callback('multiple', 'group_type_multiple')]
+      ])
+    )
+  }
 })
+
+// === NEW === Group type selection via inline callback (since it's a choice, not text)
+bot.action('group_type_single', async (ctx) => {
+  const flow = adminFlowState.get(ctx.from.id)
+  if (!flow || flow.step !== 'awaiting_group_type') return ctx.answerCbQuery()
+  adminFlowState.set(ctx.from.id, { ...flow, step: 'awaiting_group_required', selection_type: 'single' })
+  await ctx.answerCbQuery('single selected')
+  await ctx.reply(
+    'Is this group required?',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('✅ Yes', 'group_req_yes')],
+      [Markup.button.callback('❌ No', 'group_req_no')]
+    ])
+  )
+})
+
+bot.action('group_type_multiple', async (ctx) => {
+  const flow = adminFlowState.get(ctx.from.id)
+  if (!flow || flow.step !== 'awaiting_group_type') return ctx.answerCbQuery()
+  adminFlowState.set(ctx.from.id, { ...flow, step: 'awaiting_group_required', selection_type: 'multiple' })
+  await ctx.answerCbQuery('multiple selected')
+  await ctx.reply(
+    'Is this group required?',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('✅ Yes', 'group_req_yes')],
+      [Markup.button.callback('❌ No', 'group_req_no')]
+    ])
+  )
+})
+
+bot.action('group_req_yes', async (ctx) => {
+  const flow = adminFlowState.get(ctx.from.id)
+  if (!flow || flow.step !== 'awaiting_group_required') return ctx.answerCbQuery()
+  await createToppingGroup(ctx, flow.name, flow.selection_type, true)
+})
+
+bot.action('group_req_no', async (ctx) => {
+  const flow = adminFlowState.get(ctx.from.id)
+  if (!flow || flow.step !== 'awaiting_group_required') return ctx.answerCbQuery()
+  await createToppingGroup(ctx, flow.name, flow.selection_type, false)
+})
+
+async function createToppingGroup(ctx, name, selectionType, required) {
+  adminFlowState.delete(ctx.from.id)
+  const { error } = await supabase.from('topping_groups').insert({ name, selection_type: selectionType, required })
+  if (error) {
+    await ctx.answerCbQuery('Error')
+    return ctx.reply(`❌ ${error.message}`)
+  }
+  await ctx.answerCbQuery('Created')
+  await ctx.reply(`✅ Group "${name}" created (${selectionType}, ${required ? 'required' : 'optional'}).`)
+}
 
 // ═══════════════════════════════════════════════════════════
 // NOTIFICATIONS
