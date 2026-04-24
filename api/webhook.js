@@ -514,9 +514,42 @@ bot.action(/^assigngrp_group_(.+)_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
   const [, itemId, groupId] = ctx.match
 
-  const { error } = await supabase.from('item_topping_groups').insert({ menu_item_id: itemId, group_id: groupId })
-  if (error) return ctx.reply(`❌ ${error.message}`)
-  await ctx.reply('✅ Group assigned to item.')
+  try {
+    // Prevent duplicate assignments
+    const { data: existing } = await supabase
+      .from('item_topping_groups')
+      .select('id')
+      .eq('menu_item_id', itemId)
+      .eq('group_id', groupId)
+      .maybeSingle()
+
+    if (existing) {
+      return ctx.reply('⚠️ This group is already assigned to that item.')
+    }
+
+    // Fetch names for a meaningful confirmation (parallel)
+    const [{ data: item }, { data: group }] = await Promise.all([
+      supabase.from('menu_items').select('name').eq('id', itemId).maybeSingle(),
+      supabase.from('topping_groups').select('name').eq('id', groupId).maybeSingle()
+    ])
+
+    const { error } = await supabase
+      .from('item_topping_groups')
+      .insert({ menu_item_id: itemId, group_id: groupId })
+
+    if (error) {
+      console.error('assigngrp_group_ insert error:', error.message)
+      return ctx.reply(`❌ Failed to assign group: ${error.message}`)
+    }
+
+    await ctx.reply(
+      `✅ Group *"${group?.name || groupId}"* assigned to item *"${item?.name || itemId}"* successfully!`,
+      { parse_mode: 'Markdown' }
+    )
+  } catch (err) {
+    console.error('assigngrp_group_ unexpected error:', err.message)
+    await ctx.reply('❌ An unexpected error occurred. Please try again.')
+  }
 })
 
 // === NEW === Admin: Assign Topping to Group inline flow
@@ -551,9 +584,42 @@ bot.action(/^assignt_top_(.+)_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
   const [, groupId, toppingId] = ctx.match
 
-  const { error } = await supabase.from('topping_group_options').insert({ group_id: groupId, topping_id: toppingId })
-  if (error) return ctx.reply(`❌ ${error.message}`)
-  await ctx.reply('✅ Topping assigned to group.')
+  try {
+    // Prevent duplicate assignments
+    const { data: existing } = await supabase
+      .from('topping_group_options')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('topping_id', toppingId)
+      .maybeSingle()
+
+    if (existing) {
+      return ctx.reply('⚠️ This topping is already in that group.')
+    }
+
+    // Fetch names for a meaningful confirmation (parallel)
+    const [{ data: group }, { data: topping }] = await Promise.all([
+      supabase.from('topping_groups').select('name').eq('id', groupId).maybeSingle(),
+      supabase.from('toppings').select('name').eq('id', toppingId).maybeSingle()
+    ])
+
+    const { error } = await supabase
+      .from('topping_group_options')
+      .insert({ group_id: groupId, topping_id: toppingId })
+
+    if (error) {
+      console.error('assignt_top_ insert error:', error.message)
+      return ctx.reply(`❌ Failed to assign topping: ${error.message}`)
+    }
+
+    await ctx.reply(
+      `✅ Topping *"${topping?.name || toppingId}"* added to group *"${group?.name || groupId}"* successfully!`,
+      { parse_mode: 'Markdown' }
+    )
+  } catch (err) {
+    console.error('assignt_top_ unexpected error:', err.message)
+    await ctx.reply('❌ An unexpected error occurred. Please try again.')
+  }
 })
 
 // ─── ADMIN: MANAGE STAFF ─────────────────────────────────────
@@ -1160,7 +1226,7 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
         [
           Markup.button.callback('➕', `cart_qty_up_${i.id}`),
           Markup.button.callback('➖', `cart_qty_down_${i.id}`),
-          Markup.button.callback('❌ إزالة', `remove_item_${i.id}`)
+          Markup.button.callback('❌ إزالة', `cart_rm_${i.id}`)
         ]
       ])
     })
@@ -1202,11 +1268,17 @@ bot.action(/^cart_qty_down_(.+)$/, async (ctx) => {
   }
 })
 
-bot.action(/^remove_item_(.+)$/, async (ctx) => {
+// Renamed from remove_item_ to cart_rm_ to avoid collision with the legacy remove_ regex
+bot.action(/^cart_rm_(.+)$/, async (ctx) => {
   const orderItemId = ctx.match[1]
-  await removeItemFromCart(null, orderItemId)
-  await ctx.answerCbQuery('تم الحذف.')
-  await ctx.deleteMessage()
+  try {
+    await removeItemFromCart(null, orderItemId)
+    await ctx.answerCbQuery('تم الحذف.')
+    await ctx.deleteMessage()
+  } catch (err) {
+    console.error('cart_rm_ error:', err.message)
+    await ctx.answerCbQuery('❌ فشل الحذف، جرب ثاني.')
+  }
 })
 
 bot.action('clear_cart', async (ctx) => {
