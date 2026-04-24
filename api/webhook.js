@@ -495,6 +495,7 @@ bot.action('menu_assign_group', async (ctx) => {
   await ctx.reply('Select an item to assign a group to:', Markup.inlineKeyboard(buttons))
 })
 
+// Step 1: admin picks the item — store itemId in state, show groups with SHORT callbacks
 bot.action(/^assigngrp_item_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
@@ -504,15 +505,28 @@ bot.action(/^assigngrp_item_(.+)$/, async (ctx) => {
   const { data: groups } = await supabase.from('topping_groups').select('id, name').order('name')
   if (!groups?.length) return ctx.reply('No topping groups exist. Create one first.')
 
-  const buttons = groups.map(g => [Markup.button.callback(g.name, `assigngrp_group_${itemId}_${g.id}`)])
+  // Store itemId so the next step can read it (avoids exceeding Telegram's 64-byte callback_data limit)
+  adminFlowState.set(ctx.from.id, { step: 'selecting_group_for_item', itemId })
+
+  // pick_grp_<UUID> = 9 + 36 = 45 bytes ✅ (was 89 bytes with two UUIDs)
+  const buttons = groups.map(g => [Markup.button.callback(g.name, `pick_grp_${g.id}`)])
   await ctx.reply('Select a group to assign:', Markup.inlineKeyboard(buttons))
 })
 
-bot.action(/^assigngrp_group_(.+)_(.+)$/, async (ctx) => {
+// Step 2: admin picks the group — read itemId from state, insert
+bot.action(/^pick_grp_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  const [, itemId, groupId] = ctx.match
+  const groupId = ctx.match[1]
+
+  const state = adminFlowState.get(ctx.from.id)
+  if (!state || state.step !== 'selecting_group_for_item') {
+    return ctx.reply('⚠️ Session expired. Please tap 🔗 Assign Group → Item again.')
+  }
+
+  const { itemId } = state
+  adminFlowState.delete(ctx.from.id)
 
   try {
     // Prevent duplicate assignments
@@ -538,7 +552,7 @@ bot.action(/^assigngrp_group_(.+)_(.+)$/, async (ctx) => {
       .insert({ menu_item_id: itemId, group_id: groupId })
 
     if (error) {
-      console.error('assigngrp_group_ insert error:', error.message)
+      console.error('pick_grp_ insert error:', error.message)
       return ctx.reply(`❌ Failed to assign group: ${error.message}`)
     }
 
@@ -547,7 +561,7 @@ bot.action(/^assigngrp_group_(.+)_(.+)$/, async (ctx) => {
       { parse_mode: 'Markdown' }
     )
   } catch (err) {
-    console.error('assigngrp_group_ unexpected error:', err.message)
+    console.error('pick_grp_ unexpected error:', err.message)
     await ctx.reply('❌ An unexpected error occurred. Please try again.')
   }
 })
@@ -565,6 +579,7 @@ bot.action('menu_assign_topping', async (ctx) => {
   await ctx.reply('Select a group:', Markup.inlineKeyboard(buttons))
 })
 
+// Step 1: admin picks the group — store groupId in state, show toppings with SHORT callbacks
 bot.action(/^assignt_group_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
@@ -574,8 +589,65 @@ bot.action(/^assignt_group_(.+)$/, async (ctx) => {
   const { data: toppings } = await supabase.from('toppings').select('id, name').eq('is_active', true).order('name')
   if (!toppings?.length) return ctx.reply('No toppings available.')
 
-  const buttons = toppings.map(t => [Markup.button.callback(t.name, `assignt_top_${groupId}_${t.id}`)])
+  // Store groupId so the next step can read it (avoids exceeding Telegram's 64-byte callback_data limit)
+  adminFlowState.set(ctx.from.id, { step: 'selecting_topping_for_group', groupId })
+
+  // pick_top_<UUID> = 9 + 36 = 45 bytes ✅ (was 85 bytes with two UUIDs)
+  const buttons = toppings.map(t => [Markup.button.callback(t.name, `pick_top_${t.id}`)])
   await ctx.reply('Select a topping to add to this group:', Markup.inlineKeyboard(buttons))
+})
+
+// Step 2: admin picks the topping — read groupId from state, insert
+bot.action(/^pick_top_(.+)$/, async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
+  await ctx.answerCbQuery()
+  const toppingId = ctx.match[1]
+
+  const state = adminFlowState.get(ctx.from.id)
+  if (!state || state.step !== 'selecting_topping_for_group') {
+    return ctx.reply('⚠️ Session expired. Please tap 🔗 Assign Topping → Group again.')
+  }
+
+  const { groupId } = state
+  adminFlowState.delete(ctx.from.id)
+
+  try {
+    // Prevent duplicate assignments
+    const { data: existing } = await supabase
+      .from('topping_group_options')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('topping_id', toppingId)
+      .maybeSingle()
+
+    if (existing) {
+      return ctx.reply('⚠️ This topping is already in that group.')
+    }
+
+    // Fetch names for a meaningful confirmation (parallel)
+    const [{ data: group }, { data: topping }] = await Promise.all([
+      supabase.from('topping_groups').select('name').eq('id', groupId).maybeSingle(),
+      supabase.from('toppings').select('name').eq('id', toppingId).maybeSingle()
+    ])
+
+    const { error } = await supabase
+      .from('topping_group_options')
+      .insert({ group_id: groupId, topping_id: toppingId })
+
+    if (error) {
+      console.error('pick_top_ insert error:', error.message)
+      return ctx.reply(`❌ Failed to assign topping: ${error.message}`)
+    }
+
+    await ctx.reply(
+      `✅ Topping *"${topping?.name || toppingId}"* added to group *"${group?.name || groupId}"* successfully!`,
+      { parse_mode: 'Markdown' }
+    )
+  } catch (err) {
+    console.error('pick_top_ unexpected error:', err.message)
+    await ctx.reply('❌ An unexpected error occurred. Please try again.')
+  }
 })
 
 bot.action(/^assignt_top_(.+)_(.+)$/, async (ctx) => {
