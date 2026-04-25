@@ -120,8 +120,8 @@ bot.start(async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
 
   // Cancel any running admin flow when /start is hit
-  adminFlowState.delete(ctx.from.id)
-  orderFlowState.delete(ctx.from.id) // === NEW ===
+  await adminFlowState.delete(ctx.from.id)
+  await orderFlowState.delete(ctx.from.id) // === NEW ===
 
   if (role === 'admin') {
     return ctx.reply(
@@ -181,7 +181,7 @@ bot.action('vieworders_custom', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_orders_date' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_orders_date' })
   await ctx.reply('🗓 Send the date you want to view (format: *YYYY-MM-DD*)', { parse_mode: 'Markdown' })
 })
 
@@ -381,7 +381,7 @@ bot.action(/^itemedit_name_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_item_name', itemId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_item_name', itemId: ctx.match[1] })
   await ctx.reply('✏️ Send the new *name* for this item.', { parse_mode: 'Markdown' })
 })
 
@@ -389,7 +389,7 @@ bot.action(/^itemedit_price_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_item_price', itemId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_item_price', itemId: ctx.match[1] })
   await ctx.reply('💲 Send the new *price* (numbers only).', { parse_mode: 'Markdown' })
 })
 
@@ -422,7 +422,7 @@ bot.action(/^catrename_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_category_rename', categoryId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_category_rename', categoryId: ctx.match[1] })
   await ctx.reply('✏️ Send the new *name* for this category.', { parse_mode: 'Markdown' })
 })
 
@@ -443,7 +443,7 @@ bot.action('menu_add_category', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_new_category_name' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_new_category_name' })
   await ctx.reply('➕ Send the *name* of the new category (you can prefix with an emoji e.g. "🍕 Pizza").', { parse_mode: 'Markdown' })
 })
 
@@ -463,7 +463,7 @@ bot.action(/^addtocat_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_new_item_name', categoryId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_new_item_name', categoryId: ctx.match[1] })
   await ctx.reply('➕ Send the *name* of the new item.', { parse_mode: 'Markdown' })
 })
 
@@ -472,7 +472,7 @@ bot.action('menu_add_topping', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_name' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_name' })
   await ctx.reply('🧀 Send the *name* of the new topping.', { parse_mode: 'Markdown' })
 })
 
@@ -481,7 +481,7 @@ bot.action('menu_add_group', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_group_name' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_group_name' })
   await ctx.reply('📦 Send the *name* of the new topping group.', { parse_mode: 'Markdown' })
 })
 
@@ -509,7 +509,7 @@ bot.action(/^assigngrp_item_(.+)$/, async (ctx) => {
   if (!groups?.length) return ctx.reply('No topping groups exist. Create one first.')
 
   // Store itemId so the next step can read it (avoids exceeding Telegram's 64-byte callback_data limit)
-  adminFlowState.set(ctx.from.id, { step: 'selecting_group_for_item', itemId })
+  await adminFlowState.set(ctx.from.id, { step: 'selecting_group_for_item', itemId })
 
   // pick_grp_<UUID> = 9 + 36 = 45 bytes ✅ (was 89 bytes with two UUIDs)
   const buttons = groups.map(g => [Markup.button.callback(g.name, `pick_grp_${g.id}`)])
@@ -523,13 +523,13 @@ bot.action(/^pick_grp_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
   const groupId = ctx.match[1]
 
-  const state = adminFlowState.get(ctx.from.id)
+  const state = await adminFlowState.get(ctx.from.id)
   if (!state || state.step !== 'selecting_group_for_item') {
     return ctx.reply('⚠️ Session expired. Please tap 🔗 Assign Group → Item again.')
   }
 
   const { itemId } = state
-  adminFlowState.delete(ctx.from.id)
+  await adminFlowState.delete(ctx.from.id)
 
   try {
     // Prevent duplicate assignments
@@ -593,7 +593,7 @@ bot.action(/^assignt_group_(.+)$/, async (ctx) => {
   if (!toppings?.length) return ctx.reply('No toppings available.')
 
   // Store groupId so the next step can read it (avoids exceeding Telegram's 64-byte callback_data limit)
-  adminFlowState.set(ctx.from.id, { step: 'selecting_topping_for_group', groupId })
+  await adminFlowState.set(ctx.from.id, { step: 'selecting_topping_for_group', groupId })
 
   // pick_top_<UUID> = 9 + 36 = 45 bytes ✅ (was 85 bytes with two UUIDs)
   const buttons = toppings.map(t => [Markup.button.callback(t.name, `pick_top_${t.id}`)])
@@ -607,13 +607,13 @@ bot.action(/^pick_top_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery()
   const toppingId = ctx.match[1]
 
-  const state = adminFlowState.get(ctx.from.id)
+  const state = await adminFlowState.get(ctx.from.id)
   if (!state || state.step !== 'selecting_topping_for_group') {
     return ctx.reply('⚠️ Session expired. Please tap 🔗 Assign Topping → Group again.')
   }
 
   const { groupId } = state
-  adminFlowState.delete(ctx.from.id)
+  await adminFlowState.delete(ctx.from.id)
 
   try {
     // Prevent duplicate assignments
@@ -720,7 +720,7 @@ bot.action('add_cashier_btn', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
   await ctx.reply(
     '👤 *Add Cashier*\n\n' +
     'Step 1 of 2: Please send the cashier\'s *Telegram ID* (numeric).\n\n' +
@@ -733,7 +733,7 @@ bot.action('remove_cashier_btn', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
   await ctx.reply(
     '🗑 *Remove Cashier*\n\nSend the cashier\'s *Telegram ID* to remove.',
     { parse_mode: 'Markdown' }
@@ -829,7 +829,7 @@ bot.action(/^slotrename_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_slot_rename', slotId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_slot_rename', slotId: ctx.match[1] })
   await ctx.reply('✏️ Send the new *label* for this slot (e.g. "12:00 PM").', { parse_mode: 'Markdown' })
 })
 
@@ -837,7 +837,7 @@ bot.action(/^slotmax_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_slot_max', slotId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_slot_max', slotId: ctx.match[1] })
   await ctx.reply('🔢 Send the new *max orders* (positive integer).', { parse_mode: 'Markdown' })
 })
 
@@ -858,7 +858,7 @@ bot.action('slot_add', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_new_slot_label' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_new_slot_label' })
   await ctx.reply('➕ Send the *label* for the new slot (e.g. "12:00 PM").', { parse_mode: 'Markdown' })
 })
 
@@ -867,7 +867,7 @@ bot.action('slot_add', async (ctx) => {
 bot.hears('📢 Broadcast', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_broadcast_message' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_broadcast_message' })
   await ctx.reply(
     '📢 *Broadcast*\n\nSend the message you want to send to *all users*.\n\nReply with /cancel to abort.',
     { parse_mode: 'Markdown' }
@@ -879,13 +879,13 @@ bot.action('broadcast_confirm', async (ctx) => {
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
 
-  const state = adminFlowState.get(ctx.from.id)
+  const state = await adminFlowState.get(ctx.from.id)
   if (!state || state.step !== 'awaiting_broadcast_confirm') {
     return ctx.reply('⚠️ Nothing to broadcast. Tap 📢 Broadcast again.')
   }
 
   const message = state.message
-  adminFlowState.delete(ctx.from.id)
+  await adminFlowState.delete(ctx.from.id)
 
   const { data: users, error } = await supabase
     .from('users')
@@ -914,7 +914,7 @@ bot.action('broadcast_confirm', async (ctx) => {
 
 bot.action('broadcast_cancel', async (ctx) => {
   await ctx.answerCbQuery('Cancelled')
-  adminFlowState.delete(ctx.from.id)
+  await adminFlowState.delete(ctx.from.id)
   await ctx.reply('❌ Broadcast cancelled.')
 })
 
@@ -942,7 +942,7 @@ bot.action('analytics_custom', async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_analytics_days' })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_analytics_days' })
   await ctx.reply('🔢 How many days back? Send a positive integer (e.g. 14).')
 })
 
@@ -1064,7 +1064,7 @@ bot.action(/^item_(.+)$/, async (ctx) => {
   const groups = await getItemToppingGroups(itemId)
 
   // Initialize order flow state
-  orderFlowState.set(ctx.from.id, {
+  await orderFlowState.set(ctx.from.id, {
     step: 'customizing',
     itemId: menuItem.id,
     itemName: menuItem.name,
@@ -1079,7 +1079,7 @@ bot.action(/^item_(.+)$/, async (ctx) => {
 
 // === NEW === Send/refresh the customization UI message
 async function sendCustomizationMessage(ctx, userId) {
-  const state = orderFlowState.get(userId)
+  const state = await orderFlowState.get(userId)
   if (!state || state.step !== 'customizing') return
 
   const { itemName, basePrice, selectedToppings, quantity, groups } = state
@@ -1154,7 +1154,7 @@ async function sendCustomizationMessage(ctx, userId) {
 bot.action(/^toggle_topping_(.+)$/, async (ctx) => {
   const toppingId = ctx.match[1]
   const userId = ctx.from.id
-  const state = orderFlowState.get(userId)
+  const state = await orderFlowState.get(userId)
 
   if (!state || state.step !== 'customizing') {
     return ctx.answerCbQuery('انتهت الجلسة. ابدأ من جديد.')
@@ -1183,7 +1183,7 @@ bot.action(/^toggle_topping_(.+)$/, async (ctx) => {
 
 // === NEW === Quantity controls
 bot.action('qty_up', async (ctx) => {
-  const state = orderFlowState.get(ctx.from.id)
+  const state = await orderFlowState.get(ctx.from.id)
   if (!state || state.step !== 'customizing') return ctx.answerCbQuery('Session expired.')
   state.quantity += 1
   await ctx.answerCbQuery(`الكمية: ${state.quantity}`)
@@ -1191,7 +1191,7 @@ bot.action('qty_up', async (ctx) => {
 })
 
 bot.action('qty_down', async (ctx) => {
-  const state = orderFlowState.get(ctx.from.id)
+  const state = await orderFlowState.get(ctx.from.id)
   if (!state || state.step !== 'customizing') return ctx.answerCbQuery('Session expired.')
   if (state.quantity > 1) {
     state.quantity -= 1
@@ -1208,7 +1208,7 @@ bot.action('confirm_item_disabled', async (ctx) => ctx.answerCbQuery('أكمل �
 // === NEW === Confirm customization and add to cart
 bot.action('confirm_item', async (ctx) => {
   const userId = ctx.from.id
-  const state = orderFlowState.get(userId)
+  const state = await orderFlowState.get(userId)
 
   if (!state || state.step !== 'customizing') {
     return ctx.answerCbQuery('انتهت الجلسة.')
@@ -1234,7 +1234,7 @@ bot.action('confirm_item', async (ctx) => {
   const user = await getOrCreateUser(userId)
   await addItemToCart(user.id, menuItem, quantity, customization)
 
-  orderFlowState.delete(userId)
+  await orderFlowState.delete(userId)
 
   await ctx.answerCbQuery(`✅ ${itemName} انضاف للسلة!`)
   await ctx.editMessageText(
@@ -1244,7 +1244,7 @@ bot.action('confirm_item', async (ctx) => {
 })
 
 bot.action('cancel_customize', async (ctx) => {
-  orderFlowState.delete(ctx.from.id)
+  await orderFlowState.delete(ctx.from.id)
   await ctx.answerCbQuery('تم الإلغاء.')
   await ctx.editMessageText('❌ تم الإلغاء.')
 })
@@ -1587,12 +1587,12 @@ bot.command('status', async (ctx) => {
 })
 
 bot.command('cancel', async (ctx) => {
-  if (adminFlowState.has(ctx.from.id)) {
-    adminFlowState.delete(ctx.from.id)
+  if (await adminFlowState.has(ctx.from.id)) {
+    await adminFlowState.delete(ctx.from.id)
     return ctx.reply('❌ Cancelled.')
   }
-  if (orderFlowState.has(ctx.from.id)) {
-    orderFlowState.delete(ctx.from.id)
+  if (await orderFlowState.has(ctx.from.id)) {
+    await orderFlowState.delete(ctx.from.id)
     return ctx.reply('❌ Cancelled.')
   }
   return ctx.reply('Nothing to cancel.')
@@ -1658,7 +1658,7 @@ bot.hears('🧹 Clear Chat', requireAdmin, async (ctx) => {
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim()
   const userId = ctx.from.id
-  const flow = adminFlowState.get(userId)
+  const flow = await adminFlowState.get(userId)
 
   // ─── CASHIER FLOWS ──────────────────────────────────────
   if (!flow) {
@@ -1686,7 +1686,7 @@ bot.on('text', async (ctx) => {
     if (!/^\d+$/.test(text)) {
       return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
     }
-    adminFlowState.set(userId, { step: 'awaiting_cashier_username', telegramId: text })
+    await adminFlowState.set(userId, { step: 'awaiting_cashier_username', telegramId: text })
     return ctx.reply(
       '✅ Telegram ID saved.\n\nStep 2 of 2: Now send the cashier\'s *username* (without @).',
       { parse_mode: 'Markdown' }
@@ -1712,7 +1712,7 @@ bot.on('text', async (ctx) => {
       is_active: true
     }, { onConflict: 'telegram_hash' })
 
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
 
     if (error) {
       console.error('Error adding cashier:', error.message)
@@ -1726,12 +1726,12 @@ bot.on('text', async (ctx) => {
 
   if (flow.step === 'awaiting_remove_id') {
     if (!/^\d+$/.test(text)) {
-      adminFlowState.delete(userId)
+      await adminFlowState.delete(userId)
       return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
     }
     const hash = hashTelegramId(text)
     const { error } = await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) {
       console.error('Error removing cashier:', error.message)
       return ctx.reply('❌ Failed to remove cashier.')
@@ -1744,14 +1744,14 @@ bot.on('text', async (ctx) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
       return ctx.reply('❌ Invalid format. Use YYYY-MM-DD.')
     }
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     return showOrdersForDay(ctx, text)
   }
 
   // ─── MENU FLOWS ─────────────────────────────────────────
   if (flow.step === 'awaiting_item_name') {
     const { error } = await supabase.from('menu_items').update({ name: text }).eq('id', flow.itemId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply('✅ Item name updated.')
   }
@@ -1760,14 +1760,14 @@ bot.on('text', async (ctx) => {
     const price = parseFloat(text)
     if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
     const { error } = await supabase.from('menu_items').update({ price }).eq('id', flow.itemId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Price updated to ${price.toFixed(2)} IQD.`)
   }
 
   if (flow.step === 'awaiting_category_rename') {
     const { error } = await supabase.from('categories').update({ name: text }).eq('id', flow.categoryId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply('✅ Category renamed.')
   }
@@ -1778,20 +1778,20 @@ bot.on('text', async (ctx) => {
     const emoji = match ? match[1] : null
     const name = match ? match[2] : text
     const { error } = await supabase.from('categories').insert({ name, emoji, is_active: true, sort_order: 999 })
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Category "${name}" added.`)
   }
 
   if (flow.step === 'awaiting_new_item_name') {
-    adminFlowState.set(userId, { step: 'awaiting_new_item_price', categoryId: flow.categoryId, name: text })
+    await adminFlowState.set(userId, { step: 'awaiting_new_item_price', categoryId: flow.categoryId, name: text })
     return ctx.reply('💲 Now send the *price* (numbers only).', { parse_mode: 'Markdown' })
   }
 
   if (flow.step === 'awaiting_new_item_price') {
     const price = parseFloat(text)
     if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
-    adminFlowState.set(userId, { step: 'awaiting_new_item_description', categoryId: flow.categoryId, name: flow.name, price })
+    await adminFlowState.set(userId, { step: 'awaiting_new_item_description', categoryId: flow.categoryId, name: flow.name, price })
     return ctx.reply('📝 Now send a short *description* (or send "-" for none).', { parse_mode: 'Markdown' })
   }
 
@@ -1805,7 +1805,7 @@ bot.on('text', async (ctx) => {
       is_available: true,
       sort_order: 999
     })
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Item "${flow.name}" added.`)
   }
@@ -1813,7 +1813,7 @@ bot.on('text', async (ctx) => {
   // ─── SLOT FLOWS ─────────────────────────────────────────
   if (flow.step === 'awaiting_slot_rename') {
     const { error } = await supabase.from('pickup_slots').update({ label: text }).eq('id', flow.slotId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply('✅ Slot renamed.')
   }
@@ -1822,13 +1822,13 @@ bot.on('text', async (ctx) => {
     const n = parseInt(text, 10)
     if (isNaN(n) || n < 1) return ctx.reply('❌ Send a positive integer.')
     const { error } = await supabase.from('pickup_slots').update({ max_orders: n }).eq('id', flow.slotId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Max orders set to ${n}.`)
   }
 
   if (flow.step === 'awaiting_new_slot_label') {
-    adminFlowState.set(userId, { step: 'awaiting_new_slot_time', label: text })
+    await adminFlowState.set(userId, { step: 'awaiting_new_slot_time', label: text })
     return ctx.reply('🕐 Send the *time* for this slot in HH:MM format (24h, e.g. "12:00").', { parse_mode: 'Markdown' })
   }
 
@@ -1837,7 +1837,7 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ Invalid time. Use HH:MM (e.g. 12:00).')
     }
     const slotTime = text.length === 5 ? `${text}:00` : text
-    adminFlowState.set(userId, { step: 'awaiting_new_slot_max', label: flow.label, slot_time: slotTime })
+    await adminFlowState.set(userId, { step: 'awaiting_new_slot_max', label: flow.label, slot_time: slotTime })
     return ctx.reply('🔢 Finally, send *max orders* for this slot.', { parse_mode: 'Markdown' })
   }
 
@@ -1850,14 +1850,14 @@ bot.on('text', async (ctx) => {
       max_orders: n,
       is_active: true
     })
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Slot "${flow.label}" added.`)
   }
 
   // ─── BROADCAST FLOW ─────────────────────────────────────
   if (flow.step === 'awaiting_broadcast_message') {
-    adminFlowState.set(userId, { step: 'awaiting_broadcast_confirm', message: text })
+    await adminFlowState.set(userId, { step: 'awaiting_broadcast_confirm', message: text })
     return ctx.reply(
       `📢 *Preview:*\n\n${text}\n\nSend to all users?`,
       {
@@ -1874,20 +1874,20 @@ bot.on('text', async (ctx) => {
   if (flow.step === 'awaiting_analytics_days') {
     const n = parseInt(text, 10)
     if (isNaN(n) || n < 1 || n > 365) return ctx.reply('❌ Send a number between 1 and 365.')
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     return showAnalytics(ctx, n)
   }
 
   // === NEW === TOPPING FLOWS ──────────────────────────────
   if (flow.step === 'awaiting_topping_name') {
-    adminFlowState.set(userId, { step: 'awaiting_topping_price', name: text })
+    await adminFlowState.set(userId, { step: 'awaiting_topping_price', name: text })
     return ctx.reply('💲 Send the *price* for this topping (0 if free).', { parse_mode: 'Markdown' })
   }
 
   if (flow.step === 'awaiting_topping_price') {
     const price = parseFloat(text)
     if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
-    adminFlowState.set(userId, { step: 'awaiting_topping_tag', name: flow.name, price })
+    await adminFlowState.set(userId, { step: 'awaiting_topping_tag', name: flow.name, price })
     return ctx.reply('🏷 Send an optional *tag* (e.g. "extra", "sauce") or "-" for none.', { parse_mode: 'Markdown' })
   }
 
@@ -1899,14 +1899,14 @@ bot.on('text', async (ctx) => {
       tag,
       is_active: true
     })
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Topping "${flow.name}" added.`)
   }
 
   // === NEW === GROUP FLOWS ────────────────────────────────
   if (flow.step === 'awaiting_group_name') {
-    adminFlowState.set(userId, { step: 'awaiting_group_type', name: text })
+    await adminFlowState.set(userId, { step: 'awaiting_group_type', name: text })
     return ctx.reply(
       '📋 Choose selection type:\n\nsingle = only one can be selected\nmultiple = allow multiple selections',
       Markup.inlineKeyboard([
@@ -1919,7 +1919,7 @@ bot.on('text', async (ctx) => {
   // ─── EDIT TOPPING FLOWS ─────────────────────────────────
   if (flow.step === 'awaiting_topping_new_name') {
     const { error } = await supabase.from('toppings').update({ name: text }).eq('id', flow.toppingId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Topping renamed to "${text}".`)
   }
@@ -1928,7 +1928,7 @@ bot.on('text', async (ctx) => {
     const price = parseFloat(text)
     if (isNaN(price) || price < 0) return ctx.reply('❌ Invalid price. Send a number.')
     const { error } = await supabase.from('toppings').update({ price }).eq('id', flow.toppingId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Price updated to ${price.toFixed(2)} IQD.`)
   }
@@ -1936,7 +1936,7 @@ bot.on('text', async (ctx) => {
   if (flow.step === 'awaiting_topping_new_tag') {
     const tag = text === '-' ? null : text
     const { error } = await supabase.from('toppings').update({ tag }).eq('id', flow.toppingId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(tag ? `✅ Tag set to "${tag}".` : '✅ Tag removed.')
   }
@@ -1944,7 +1944,7 @@ bot.on('text', async (ctx) => {
   // ─── EDIT GROUP FLOWS ───────────────────────────────────
   if (flow.step === 'awaiting_group_new_name') {
     const { error } = await supabase.from('topping_groups').update({ name: text }).eq('id', flow.groupId)
-    adminFlowState.delete(userId)
+    await adminFlowState.delete(userId)
     if (error) return ctx.reply(`❌ ${error.message}`)
     return ctx.reply(`✅ Group renamed to "${text}".`)
   }
@@ -1952,9 +1952,9 @@ bot.on('text', async (ctx) => {
 
 // === NEW === Group type selection via inline callback (since it's a choice, not text)
 bot.action('group_type_single', async (ctx) => {
-  const flow = adminFlowState.get(ctx.from.id)
+  const flow = await adminFlowState.get(ctx.from.id)
   if (!flow || flow.step !== 'awaiting_group_type') return ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { ...flow, step: 'awaiting_group_required', selection_type: 'single' })
+  await adminFlowState.set(ctx.from.id, { ...flow, step: 'awaiting_group_required', selection_type: 'single' })
   await ctx.answerCbQuery('single selected')
   await ctx.reply(
     'Is this group required?',
@@ -1966,9 +1966,9 @@ bot.action('group_type_single', async (ctx) => {
 })
 
 bot.action('group_type_multiple', async (ctx) => {
-  const flow = adminFlowState.get(ctx.from.id)
+  const flow = await adminFlowState.get(ctx.from.id)
   if (!flow || flow.step !== 'awaiting_group_type') return ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { ...flow, step: 'awaiting_group_required', selection_type: 'multiple' })
+  await adminFlowState.set(ctx.from.id, { ...flow, step: 'awaiting_group_required', selection_type: 'multiple' })
   await ctx.answerCbQuery('multiple selected')
   await ctx.reply(
     'Is this group required?',
@@ -1980,19 +1980,19 @@ bot.action('group_type_multiple', async (ctx) => {
 })
 
 bot.action('group_req_yes', async (ctx) => {
-  const flow = adminFlowState.get(ctx.from.id)
+  const flow = await adminFlowState.get(ctx.from.id)
   if (!flow || flow.step !== 'awaiting_group_required') return ctx.answerCbQuery()
   await createToppingGroup(ctx, flow.name, flow.selection_type, true)
 })
 
 bot.action('group_req_no', async (ctx) => {
-  const flow = adminFlowState.get(ctx.from.id)
+  const flow = await adminFlowState.get(ctx.from.id)
   if (!flow || flow.step !== 'awaiting_group_required') return ctx.answerCbQuery()
   await createToppingGroup(ctx, flow.name, flow.selection_type, false)
 })
 
 async function createToppingGroup(ctx, name, selectionType, required) {
-  adminFlowState.delete(ctx.from.id)
+  await adminFlowState.delete(ctx.from.id)
   const { error } = await supabase.from('topping_groups').insert({ name, selection_type: selectionType, required })
   if (error) {
     await ctx.answerCbQuery('Error')
@@ -2061,7 +2061,7 @@ bot.action(/^tpname_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_new_name', toppingId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_new_name', toppingId: ctx.match[1] })
   await ctx.reply('✏️ Send the new *name* for this topping.', { parse_mode: 'Markdown' })
 })
 
@@ -2069,7 +2069,7 @@ bot.action(/^tpprice_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_new_price', toppingId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_new_price', toppingId: ctx.match[1] })
   await ctx.reply('💲 Send the new *price* (0 if free).', { parse_mode: 'Markdown' })
 })
 
@@ -2077,7 +2077,7 @@ bot.action(/^tptag_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_new_tag', toppingId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_new_tag', toppingId: ctx.match[1] })
   await ctx.reply('🏷 Send the new *tag* (or "-" to remove).', { parse_mode: 'Markdown' })
 })
 
@@ -2165,7 +2165,7 @@ bot.action(/^grpname_(.+)$/, async (ctx) => {
   const role = await getStaffRole(ctx.from.id)
   if (role !== 'admin') return ctx.answerCbQuery('⛔ Unauthorized.')
   await ctx.answerCbQuery()
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_group_new_name', groupId: ctx.match[1] })
+  await adminFlowState.set(ctx.from.id, { step: 'awaiting_group_new_name', groupId: ctx.match[1] })
   await ctx.reply('✏️ Send the new *name* for this group.', { parse_mode: 'Markdown' })
 })
 
