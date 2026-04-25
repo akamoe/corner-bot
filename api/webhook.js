@@ -17,20 +17,26 @@ const adminFlowState = new Map()
 const orderFlowState = new Map()
 
 // Register commands with Telegram so they show in the / menu
-bot.telegram.setMyCommands([
-  { command: 'start', description: 'Start the bot' },
-  { command: 'addcashier', description: 'Add a cashier (admin only)' },
-  { command: 'removecashier', description: 'Remove a cashier (admin only)' },
-  { command: 'add_category', description: 'Add a category (admin only)' },
-  { command: 'add_item', description: 'Add a menu item (admin only)' },
-  { command: 'add_topping', description: 'Add a topping (admin only)' },
-  { command: 'add_group', description: 'Add a topping group (admin only)' },
-  { command: 'assign_group_to_item', description: 'Assign group to item (admin only)' },
-  { command: 'assign_topping_to_group', description: 'Assign topping to group (admin only)' },
-  { command: 'status', description: 'Check your active order' },
-  { command: 'cart', description: 'View your cart' },
-  { command: 'help', description: 'Show help' }
-]).catch(err => console.error('Failed to set commands:', err.message))
+bot.command('setup_commands', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+  
+  await bot.telegram.setMyCommands([
+    { command: 'start', description: 'Start the bot' },
+    { command: 'addcashier', description: 'Add a cashier (admin only)' },
+    { command: 'removecashier', description: 'Remove a cashier (admin only)' },
+    { command: 'add_category', description: 'Add a category (admin only)' },
+    { command: 'add_item', description: 'Add a menu item (admin only)' },
+    { command: 'add_topping', description: 'Add a topping (admin only)' },
+    { command: 'add_group', description: 'Add a topping group (admin only)' },
+    { command: 'assign_group_to_item', description: 'Assign group to item (admin only)' },
+    { command: 'assign_topping_to_group', description: 'Assign topping to group (admin only)' },
+    { command: 'status', description: 'Check your active order' },
+    { command: 'cart', description: 'View your cart' },
+    { command: 'help', description: 'Show help' }
+  ]).catch(err => console.error('Failed to set commands:', err.message))
+  ctx.reply('Commands updated successfully.')
+})
 
 // ─── GLOBAL ERROR HANDLER ───────────────────────────────────
 
@@ -1718,6 +1724,20 @@ bot.hears(['❓ مساعدة', '❓ Help'], async (ctx) => {
   )
 })
 
+// ─── ADMIN: CLEAR CHAT ───────────────────────────────────────
+
+bot.hears('🧹 Clear Chat', async (ctx) => {
+  const role = await getStaffRole(ctx.from.id)
+  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
+
+  const currentMsgId = ctx.message.message_id
+  const chatId = ctx.chat.id
+
+  // Attempt to delete the last 80 messages (bot can only delete its own in private chats)
+  const ids = Array.from({ length: 80 }, (_, i) => currentMsgId - i)
+  await Promise.all(ids.map(id => ctx.telegram.deleteMessage(chatId, id).catch(() => {})))
+})
+
 // ═══════════════════════════════════════════════════════════
 // TEXT HANDLER — must be registered LAST so bot.hears() work
 // ═══════════════════════════════════════════════════════════
@@ -2273,20 +2293,6 @@ bot.action(/^grpdel_(.+)$/, async (ctx) => {
   }
   await ctx.answerCbQuery('Deleted')
   await ctx.reply('🗑 Group deleted.')
-})
-
-// ─── ADMIN: CLEAR CHAT ───────────────────────────────────────
-
-bot.hears('🧹 Clear Chat', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-
-  const currentMsgId = ctx.message.message_id
-  const chatId = ctx.chat.id
-
-  // Attempt to delete the last 80 messages (bot can only delete its own in private chats)
-  const ids = Array.from({ length: 80 }, (_, i) => currentMsgId - i)
-  await Promise.all(ids.map(id => ctx.telegram.deleteMessage(chatId, id).catch(() => {})))
 })
 
 // ═══════════════════════════════════════════════════════════
