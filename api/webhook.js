@@ -6,21 +6,18 @@ import { getAvailableSlots } from '../lib/slots.js'
 import { getCart, addItemToCart, removeItemFromCart, clearCart, updateCartItemQuantity } from '../lib/cart.js'
 import { confirmOrder, updateOrderStatus, getOrderByCode, getPendingOrders } from '../lib/orders.js'
 import { getItemToppingGroups, getAllToppings, getAllGroups, parseCustomization, stringifyCustomization } from '../lib/toppings.js'
+import { notifyCashiers, notifyStudent } from '../lib/notifications.js'
+import { requireAdmin, requireStaff } from '../lib/middleware.js'
+import { adminFlowState, orderFlowState } from '../lib/state.js'
+import { setupAdminCommands } from '../lib/admin-commands.js'
 import supabase from '../lib/supabase.js'
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
-// Simple in-memory state for admin multi-step flows
-const adminFlowState = new Map()
-
-// === NEW === In-memory state for user ordering flow (customization + quantity)
-const orderFlowState = new Map()
+setupAdminCommands(bot)
 
 // Register commands with Telegram so they show in the / menu
-bot.command('setup_commands', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  
+bot.command('setup_commands', requireAdmin, async (ctx) => {
   await bot.telegram.setMyCommands([
     { command: 'start', description: 'Start the bot' },
     { command: 'addcashier', description: 'Add a cashier (admin only)' },
@@ -1601,87 +1598,6 @@ bot.command('cancel', async (ctx) => {
   return ctx.reply('Nothing to cancel.')
 })
 
-bot.command('addcashier', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_cashier_id' })
-  await ctx.reply(
-    '👤 *Add Cashier*\n\n' +
-    'Step 1 of 2: Please send the cashier\'s *Telegram ID* (numeric).\n\n' +
-    '💡 Tip: Ask them to message @userinfobot to get their ID.',
-    { parse_mode: 'Markdown' }
-  )
-})
-
-bot.command('removecashier', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_remove_id' })
-  await ctx.reply(
-    '🗑 *Remove Cashier*\n\nSend the cashier\'s *Telegram ID* to remove.',
-    { parse_mode: 'Markdown' }
-  )
-})
-
-// === NEW === Admin commands for toppings & groups
-bot.command('add_category', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_new_category_name' })
-  await ctx.reply('➕ Send the *name* of the new category (you can prefix with an emoji e.g. "🍕 Pizza").', { parse_mode: 'Markdown' })
-})
-
-bot.command('add_item', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-
-  const { data: cats } = await supabase.from('categories').select('*').order('sort_order')
-  if (!cats?.length) return ctx.reply('No categories exist. Add a category first.')
-
-  const buttons = cats.map(c => [Markup.button.callback(`${c.emoji || '🍴'} ${c.name}`, `addtocat_${c.id}`)])
-  await ctx.reply('Which category should the new item go in?', Markup.inlineKeyboard(buttons))
-})
-
-bot.command('add_topping', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_topping_name' })
-  await ctx.reply('🧀 Send the *name* of the new topping.', { parse_mode: 'Markdown' })
-})
-
-bot.command('add_group', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-  adminFlowState.set(ctx.from.id, { step: 'awaiting_group_name' })
-  await ctx.reply(
-    '📦 Send the *name* of the new topping group.\n\n' +
-    'Next you will choose:\n• selection_type: single / multiple\n• required: yes / no',
-    { parse_mode: 'Markdown' }
-  )
-})
-
-bot.command('assign_group_to_item', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-
-  const { data: items } = await supabase.from('menu_items').select('id, name').eq('is_available', true).order('name')
-  if (!items?.length) return ctx.reply('No items available.')
-
-  const buttons = items.map(i => [Markup.button.callback(i.name, `assigngrp_item_${i.id}`)])
-  await ctx.reply('Select an item to assign a group to:', Markup.inlineKeyboard(buttons))
-})
-
-bot.command('assign_topping_to_group', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-
-  const { data: groups } = await supabase.from('topping_groups').select('id, name').order('name')
-  if (!groups?.length) return ctx.reply('No topping groups exist.')
-
-  const buttons = groups.map(g => [Markup.button.callback(g.name, `assignt_group_${g.id}`)])
-  await ctx.reply('Select a group:', Markup.inlineKeyboard(buttons))
-})
-
 bot.command('cart', async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
   const cart = await getCart(user.id)
@@ -1726,10 +1642,7 @@ bot.hears(['❓ مساعدة', '❓ Help'], async (ctx) => {
 
 // ─── ADMIN: CLEAR CHAT ───────────────────────────────────────
 
-bot.hears('🧹 Clear Chat', async (ctx) => {
-  const role = await getStaffRole(ctx.from.id)
-  if (role !== 'admin') return ctx.reply('⛔ Unauthorized.')
-
+bot.hears('🧹 Clear Chat', requireAdmin, async (ctx) => {
   const currentMsgId = ctx.message.message_id
   const chatId = ctx.chat.id
 
@@ -2296,83 +2209,8 @@ bot.action(/^grpdel_(.+)$/, async (ctx) => {
 })
 
 // ═══════════════════════════════════════════════════════════
-// NOTIFICATIONS
+// NOTIFICATIONS (Moved to lib/notifications.js)
 // ═══════════════════════════════════════════════════════════
-
-async function notifyCashiers(bot, order) {
-  try {
-    const { data: cashiers, error } = await supabase
-      .from('staff')
-      .select('telegram_id')
-      .eq('role', 'cashier')
-      .eq('is_active', true)
-
-    if (error) {
-      console.error('Error fetching cashiers:', error.message)
-      return
-    }
-
-    if (!cashiers?.length) return
-
-    const { data: orderDetails } = await supabase
-      .from('orders')
-      .select('*, order_items(*), pickup_slots(label)')
-      .eq('id', order.id)
-      .single()
-
-    const items = orderDetails?.order_items?.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || ''
-    const message =
-      `🔔 *طلب جديد!*\n\n` +
-      `🎫 *${order.order_code}*\n` +
-      `🕐 وقت الاستلام: ${orderDetails?.pickup_slots?.label || 'N/A'}\n` +
-      `💰 ${order.total_amount?.toFixed(2)} IQD\n\n` +
-      `${items}`
-
-    const buttons = [[Markup.button.callback('👨‍🍳 قيد التحضير', `status_${order.id}_preparing`)]]
-
-    for (const cashier of cashiers) {
-      if (cashier.telegram_id) {
-        await bot.telegram.sendMessage(cashier.telegram_id, message, {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard(buttons)
-        }).catch(err => console.error(`Failed to notify cashier ${cashier.telegram_id}:`, err.message))
-      }
-    }
-  } catch (err) {
-    console.error('Error in notifyCashiers:', err.message)
-  }
-}
-
-async function notifyStudent(bot, order, status) {
-  try {
-    const messages = {
-      preparing: '👨‍🍳 طلبك صار يتحضر!',
-      ready: `🔔 طلبك *${order.order_code}* جاهز للاستلام! تعال هسة. 🌽`,
-      cancelled: `❌ طلبك *${order.order_code}* تم إلغاؤه. تواصل ويانا.`
-    }
-
-    const msg = messages[status]
-    if (!msg) return
-
-    const { data: userData, error } = await supabase
-      .from('users')
-      .select('telegram_id')
-      .eq('id', order.user_id)
-      .maybeSingle()
-
-    if (error) {
-      console.error('Error fetching user for notification:', error.message)
-      return
-    }
-
-    if (userData?.telegram_id) {
-      await bot.telegram.sendMessage(userData.telegram_id, msg, { parse_mode: 'Markdown' })
-        .catch(err => console.error(`Failed to notify student ${userData.telegram_id}:`, err.message))
-    }
-  } catch (err) {
-    console.error('Error in notifyStudent:', err.message)
-  }
-}
 
 // ─── WEBHOOK EXPORT (for Vercel) ─────────────────────────────
 
