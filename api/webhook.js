@@ -186,54 +186,65 @@ bot.action('vieworders_custom', async (ctx) => {
 })
 
 async function showOrdersForDay(ctx, day) {
-  const start = `${day}T00:00:00`
-  const end = `${day}T23:59:59`
+  try {
+    const start = `${day}T00:00:00`
+    const end = `${day}T23:59:59`
 
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('*, order_items(*), pickup_slots(label), users(anonymous_token)')
-    .neq('status', 'pending')
-    .gte('created_at', start)
-    .lte('created_at', end)
-    .order('created_at', { ascending: true })
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*, order_items(*), pickup_slots(label), users(anonymous_token)')
+      .neq('status', 'pending')
+      .gte('created_at', start)
+      .lte('created_at', end)
+      .order('created_at', { ascending: true })
 
-  if (error) {
-    console.error('View Orders error:', error.message)
-    return ctx.reply(`❌ Error: ${error.message}`)
-  }
+    if (error) {
+      console.error('View Orders error:', error.message)
+      return ctx.reply(`❌ Error: ${error.message}`)
+    }
 
-  if (!orders?.length) {
-    return ctx.reply(
-      `📭 No orders for *${day}*.`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('💰 Total Sales', `totalsales_${day}`)]
-        ])
+    if (!orders?.length) {
+      return ctx.reply(
+        `📭 No orders for *${day}*.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💰 Total Sales', `totalsales_${day}`)]
+          ])
+        }
+      )
+    }
+
+    await ctx.reply(`📋 *Orders for ${day}* — ${orders.length} order(s)`, { parse_mode: 'Markdown' })
+
+    for (const order of orders) {
+      const items = (order.order_items || []).map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || '(no items)'
+      const text =
+        `🎫 *${order.order_code}*\n` +
+        `👤 Token: ${order.users?.anonymous_token || 'N/A'}\n` +
+        `🕐 Pickup: ${order.pickup_slots?.label || 'N/A'}\n` +
+        `📋 Status: ${String(order.status).toUpperCase()}\n` +
+        `💰 ${Number(order.total_amount || 0).toFixed(2)} IQD\n\n` +
+        `${items}`
+        
+      try {
+        await ctx.reply(text, { parse_mode: 'Markdown' })
+      } catch (err) {
+        console.error('Markdown error in showOrdersForDay:', err.message)
+        await ctx.reply(text.replace(/[*_`\[\]]/g, ''))
       }
+    }
+
+    await ctx.reply(
+      `✅ End of ${day}`,
+      { ...Markup.inlineKeyboard([
+        [Markup.button.callback('💰 Total Sales', `totalsales_${day}`)]
+      ]) }
     )
+  } catch (err) {
+    console.error('Error in showOrdersForDay execution:', err)
+    throw err
   }
-
-  await ctx.reply(`📋 *Orders for ${day}* — ${orders.length} order(s)`, { parse_mode: 'Markdown' })
-
-  for (const order of orders) {
-    const items = order.order_items.map(i => `• ${i.item_name} x${i.quantity}`).join('\n') || '(no items)'
-    const text =
-      `🎫 *${order.order_code}*\n` +
-      `👤 Token: ${order.users?.anonymous_token || 'N/A'}\n` +
-      `🕐 Pickup: ${order.pickup_slots?.label || 'N/A'}\n` +
-      `📋 Status: ${String(order.status).toUpperCase()}\n` +
-      `💰 ${Number(order.total_amount || 0).toFixed(2)} IQD\n\n` +
-      `${items}`
-    await ctx.reply(text, { parse_mode: 'Markdown' })
-  }
-
-  await ctx.reply(
-    `✅ End of ${day}`,
-    Markup.inlineKeyboard([
-      [Markup.button.callback('💰 Total Sales', `totalsales_${day}`)]
-    ])
-  )
 }
 
 bot.action(/^vieworders_(\d{4}-\d{2}-\d{2})$/, async (ctx) => {
