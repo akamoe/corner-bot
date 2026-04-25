@@ -1054,27 +1054,32 @@ bot.action(/^cat_(.+)$/, async (ctx) => {
 
 // === NEW === User selects an item → start customization flow
 bot.action(/^item_(.+)$/, async (ctx) => {
-  const itemId = ctx.match[1]
-  const menuItem = await getMenuItem(itemId)
+  try {
+    const itemId = ctx.match[1]
+    const menuItem = await getMenuItem(itemId)
 
-  if (!menuItem) return ctx.answerCbQuery('ما لقينا الوجبة.')
+    if (!menuItem) return ctx.answerCbQuery('ما لقينا الوجبة.')
 
-  await ctx.answerCbQuery()
+    await ctx.answerCbQuery()
 
-  const groups = await getItemToppingGroups(itemId)
+    const groups = await getItemToppingGroups(itemId)
 
-  // Initialize order flow state
-  await orderFlowState.set(ctx.from.id, {
-    step: 'customizing',
-    itemId: menuItem.id,
-    itemName: menuItem.name,
-    basePrice: Number(menuItem.price),
-    selectedToppings: [],
-    quantity: 1,
-    groups
-  })
+    // Initialize order flow state
+    await orderFlowState.set(ctx.from.id, {
+      step: 'customizing',
+      itemId: menuItem.id,
+      itemName: menuItem.name,
+      basePrice: Number(menuItem.price),
+      selectedToppings: [],
+      quantity: 1,
+      groups
+    })
 
-  await sendCustomizationMessage(ctx, ctx.from.id)
+    await sendCustomizationMessage(ctx, ctx.from.id)
+  } catch (err) {
+    console.error('Error in item_ action:', err)
+    await ctx.answerCbQuery('حدث خطأ، حاول مرة أخرى.')
+  }
 })
 
 // === NEW === Send/refresh the customization UI message
@@ -1142,11 +1147,16 @@ async function sendCustomizationMessage(ctx, userId) {
       })
     }
   } catch (err) {
-    // If edit fails (e.g. message unchanged), just answer cb
-    await ctx.reply(text, {
-      parse_mode: 'Markdown',
+    console.error('Error sending customization message:', err.message)
+    // If it fails (could be Markdown parsing error, or "message is not modified" error)
+    if (err.message.includes('not modified')) {
+      // Ignore if text is identical
+      return
+    }
+    // Fallback: send without Markdown just in case it was a parsing error
+    await ctx.reply(text.replace(/[*_`\[\]]/g, ''), {
       ...Markup.inlineKeyboard(keyboard)
-    })
+    }).catch(e => console.error('Fallback reply failed:', e.message))
   }
 }
 
