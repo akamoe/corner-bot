@@ -1177,29 +1177,34 @@ bot.action(/^toggle_topping_(.+)$/, async (ctx) => {
     state.selectedToppings.push(toppingId)
   }
 
+  await orderFlowState.set(userId, state)
   await ctx.answerCbQuery(isSelected ? 'تم الإلغاء' : 'تم الاختيار')
   await sendCustomizationMessage(ctx, userId)
 })
 
 // === NEW === Quantity controls
 bot.action('qty_up', async (ctx) => {
-  const state = await orderFlowState.get(ctx.from.id)
+  const userId = ctx.from.id
+  const state = await orderFlowState.get(userId)
   if (!state || state.step !== 'customizing') return ctx.answerCbQuery('Session expired.')
   state.quantity += 1
+  await orderFlowState.set(userId, state)
   await ctx.answerCbQuery(`الكمية: ${state.quantity}`)
-  await sendCustomizationMessage(ctx, ctx.from.id)
+  await sendCustomizationMessage(ctx, userId)
 })
 
 bot.action('qty_down', async (ctx) => {
-  const state = await orderFlowState.get(ctx.from.id)
+  const userId = ctx.from.id
+  const state = await orderFlowState.get(userId)
   if (!state || state.step !== 'customizing') return ctx.answerCbQuery('Session expired.')
   if (state.quantity > 1) {
     state.quantity -= 1
+    await orderFlowState.set(userId, state)
     await ctx.answerCbQuery(`الكمية: ${state.quantity}`)
   } else {
     await ctx.answerCbQuery('الحد الأدنى 1')
   }
-  await sendCustomizationMessage(ctx, ctx.from.id)
+  await sendCustomizationMessage(ctx, userId)
 })
 
 bot.action('qty_noop', async (ctx) => ctx.answerCbQuery())
