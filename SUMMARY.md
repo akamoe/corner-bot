@@ -3,7 +3,7 @@
 This document summarizes the work performed on the Corner Bot to improve its reliability, performance, and maintainability in a serverless environment (Vercel).
 
 ## 🚀 Overview of Work
-The project was executed in three main phases, followed by critical bug fixing and stabilization.
+The project was executed in three main phases, followed by critical bug fixing and stabilization, and a subsequent code quality pass.
 
 ---
 
@@ -70,3 +70,16 @@ The project was executed in three main phases, followed by critical bug fixing a
 2. **Internationalization (I18n):** Centralize all Arabic and English strings into a `lib/i18n.js` dictionary to ensure UI consistency and make text updates easier.
 3. **Database Cleanup Task:** Implement a scheduled task (Supabase Edge Function) to delete old records from the `bot_state` table to keep it lean.
 4. **Enhanced RBAC:** Migrate the remaining 70 manual role checks to the new middleware as refactoring continues.
+
+## ✅ Code Quality Pass (April 2025)
+
+### 6 files optimized across 10 improvements:
+
+| File | Change |
+|------|--------|
+| `lib/cart.js` | Consolidated duplicate `removeItemFromCart`/`removeItemFromCartById` into one |
+| `lib/state.js` | Cleaned variable naming in `deleteState` for consistency |
+| `lib/notifications.js` | Skip DB refetch when order details already in memory (avoids unnecessary query per new order) |
+| `lib/slots.js` | Replaced N+1 per-slot count queries with single batched query (count in `Map` in memory) |
+| `lib/admin-commands.js` | Fixed escaped string literals, re-added `/addcashier` handler |
+| `api/webhook.js` | Removed unused `order` param from `formatOrderSummary`, broadcast now sends 20 concurrent messages via `Promise.allSettled`, `remove_` regex tightened to UUID-only, removed legacy `add_` handler |

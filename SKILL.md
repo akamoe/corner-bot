@@ -25,6 +25,31 @@ Expert guidance for optimizing Node.js Telegram bots (Telegraf) running on serve
 *   **Fact:** Environment variables for `SUPABASE_URL` sometimes include API paths (like `/rest/v1/`).
 *   **Lesson:** Ensure the `supabase-js` client is initialized with the base project URL only. Adding trailing paths manually or via `.env` can cause `PGRST125` (Invalid path) errors.
 
+### 6. N+1 Query Avoidance for Slots
+*   **Fact:** When showing available pickup slots, the naive approach is 1 query for slots + N queries to count orders per slot.
+*   **Lesson:** Fetch all today's non-cancelled orders in a single query (no count, no `head:true`), then group/count by `slot_id` in-memory using a `Map`. This replaces N queries with 1.
+
+### 7. Batch Concurrent Sending
+*   **Fact:** Sending messages to many users in a `for` loop is slow (sequential) and can hit Telegram rate limits.
+*   **Lesson:** Use batched `Promise.allSettled` with a concurrency limit (e.g., 20) instead. Catches individual send failures without crashing the whole batch.
+
+### 8. Avoid Duplicate DB Fetches
+*   **Fact:** `notifyCashiers` was called with the full `order` object already containing items and slot info.
+*   **Lesson:** Before querying the DB, check if the data is already available on the passed object. Only fetch if `order.order_items` or `order.pickup_slots` is missing.
+
+### 9. Keep `getStaffRole` Inline (Don't Migrate to Middleware)
+*   **Fact:** The SUMMARY.md recommended migrating all role checks to the `requireAdmin`/`requireStaff` middleware.
+*   **Reality:** Inline `getStaffRole` checks work reliably. Migrating 70+ handlers to middleware changes the order in which handlers are registered, which can break things silently. The middleware pattern is fine for `bot.hears` or `bot.command` handlers, but `bot.action` handlers with inline checks are more predictable.
+*   **Lesson:** Don't fix what isn't broken. The inline role check pattern is explicit and easy to trace in the text handler.
+
+### 10. Regex Tightness for Callback Data
+*   **Fact:** Loose regex patterns like `/^remove_(.+)$/` can match callback data from unrelated features.
+*   **Lesson:** Use UUID-specific patterns (e.g., `/^remove_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/`) when matching callback data containing IDs.
+
+### 11. Patching JavaScript with `\n`
+*   **Fact:** The `patch` tool in Hermes may write literal `\\n` (backslash + n characters) instead of actual newlines when used inside JS string literals.
+*   **Lesson:** After patching `.js` files containing `\n` in template literals or strings, verify with `node --input-type=module -e "import('./file.js')"` and check for `SyntaxError`. If broken, use a small Python script with `bytes.replace()` to fix the literal escape sequences.
+
 ## 🛠 Useful Patterns
 
 ### Persistence Wrapper Pattern
@@ -44,4 +69,35 @@ try {
   // Strip special chars and retry as plain text
   await ctx.reply(richText.replace(/[*_`\[\]]/g, ''));
 }
+```
+
+### Batched Concurrent Send Pattern
+```javascript
+const CONCURRENCY = 20
+for (let i = 0; i < users.length; i += CONCURRENCY) {
+  const batch = users.slice(i, i + CONCURRENCY)
+  const outcomes = await Promise.allSettled(
+    batch.map(u => bot.telegram.sendMessage(u.telegram_id, message)
+      .catch(() => { failed++; return null })
+    )
+  )
+  sent += outcomes.filter(o => o.status === 'fulfilled' && o.value !== null).length
+}
+```
+
+### N+1 → Single Query for Slot Availability
+```javascript
+// Instead of: slots.map(s => supabase.from('orders').select('*', { count: 'exact', head: true }).eq('slot_id', s.id))
+const { data: orders } = await supabase
+  .from('orders')
+  .select('slot_id')
+  .neq('status', 'cancelled')
+  .gte('created_at', `${today}T00:00:00`)
+  .lte('created_at', `${today}T23:59:59`)
+
+const countBySlot = new Map()
+for (const o of orders || []) {
+  countBySlot.set(o.slot_id, (countBySlot.get(o.slot_id) || 0) + 1)
+}
+// Now map slots with countBySlot.get(slot.id) || 0
 ```
