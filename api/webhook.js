@@ -47,7 +47,7 @@ bot.catch((err, ctx) => {
 // ─── HELPERS ────────────────────────────────────────────────
 
 // === MODIFIED === formatOrderSummary now shows toppings from customization JSON
-function formatOrderSummary(order, items) {
+function formatOrderSummary(items) {
   const lines = items.map(i => {
     const custom = parseCustomization(i.customization)
     const toppingNames = custom.toppings.map(t => t.name).join(', ')
@@ -908,19 +908,22 @@ bot.action('broadcast_confirm', async (ctx) => {
 
   await ctx.reply(`📡 Sending to ${users.length} user(s)...`)
 
-  let sent = 0
-  let failed = 0
-  for (const u of users) {
-    try {
-      await bot.telegram.sendMessage(u.telegram_id, `📢 *Announcement*\n\n${message}`, { parse_mode: 'Markdown' })
-      sent++
-    } catch (err) {
-      failed++
-      console.error(`Broadcast fail for ${u.telegram_id}:`, err.message)
-    }
+  // Send concurrently with a concurrency limit to avoid rate limiting
+  const CONCURRENCY = 20
+  const results = { sent: 0, failed: 0 }
+  
+  for (let i = 0; i < users.length; i += CONCURRENCY) {
+    const batch = users.slice(i, i + CONCURRENCY)
+    const outcomes = await Promise.allSettled(
+      batch.map(u => 
+        bot.telegram.sendMessage(u.telegram_id, `📢 *Announcement*\n\n${message}`, { parse_mode: 'Markdown' })
+          .catch(() => { results.failed++; return null })
+      )
+    )
+    results.sent += outcomes.filter(o => o.status === 'fulfilled' && o.value !== null).length
   }
 
-  await ctx.reply(`✅ Broadcast complete.\n\n📬 Sent: ${sent}\n⚠️ Failed: ${failed}`)
+  await ctx.reply(`✅ Broadcast complete.\n\n📬 Sent: ${results.sent}\n⚠️ Failed: ${results.failed}`)
 })
 
 bot.action('broadcast_cancel', async (ctx) => {
@@ -1275,16 +1278,13 @@ bot.action('cancel_customize', async (ctx) => {
   await ctx.editMessageText('❌ تم الإلغاء.')
 })
 
-// === MODIFIED === Keep old add_ handler for backward compatibility (items without groups)
-bot.action(/^add_(.+)$/, async (ctx) => {
-  const itemId = ctx.match[1]
-  const menuItem = await getMenuItem(itemId)
-
-  if (!menuItem) return ctx.answerCbQuery('ما لقينا الوجبة.')
-
+// === LEGACY === remove_ handler — kept for backward compatibility with old inline keyboards
+// Only matches known UUID pattern to avoid conflicts
+bot.action(/^remove_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/, async (ctx) => {
   const user = await getOrCreateUser(ctx.from.id)
-  await addItemToCart(user.id, menuItem)
-  await ctx.answerCbQuery(`✅ ${menuItem.name} انضاف للسلة!`)
+  await removeItemFromCart(user.id, ctx.match[1])
+  await ctx.answerCbQuery('تم الحذف.')
+  await ctx.deleteMessage()
 })
 
 // ─── CART ────────────────────────────────────────────────────
@@ -1306,7 +1306,7 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
 
   const items = cart.order_items
   const total = items.reduce((s, i) => s + i.item_price * i.quantity, 0)
-  const summary = formatOrderSummary(cart, items)
+  const summary = formatOrderSummary(items)
 
   await ctx.reply(
     `🛒 *سلتك*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} IQD*`,
@@ -1340,14 +1340,6 @@ bot.hears(['🛒 سلتي', '🛒 My Cart'], async (ctx) => {
       [Markup.button.callback('🗑 تفريغ السلة', 'clear_cart')]
     ])
   )
-})
-
-// === MODIFIED === remove_ still works for backward compatibility
-bot.action(/^remove_(.+)$/, async (ctx) => {
-  const user = await getOrCreateUser(ctx.from.id)
-  await removeItemFromCart(user.id, ctx.match[1])
-  await ctx.answerCbQuery('تم الحذف.')
-  await ctx.deleteMessage()
 })
 
 // === NEW === Per-item cart controls
@@ -1634,7 +1626,7 @@ bot.command('cart', async (ctx) => {
 
   const items = cart.order_items
   const total = items.reduce((s, i) => s + i.item_price * i.quantity, 0)
-  const summary = formatOrderSummary(cart, items)
+  const summary = formatOrderSummary(items)
 
   await ctx.reply(
     `🛒 *سلتك*\n\n${summary}\n\n*المجموع: ${total.toFixed(2)} IQD*`,
