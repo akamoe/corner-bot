@@ -50,6 +50,42 @@ Expert guidance for optimizing Node.js Telegram bots (Telegraf) running on serve
 *   **Fact:** The `patch` tool in Hermes may write literal `\\n` (backslash + n characters) instead of actual newlines when used inside JS string literals.
 *   **Lesson:** After patching `.js` files containing `\n` in template literals or strings, verify with `node --input-type=module -e "import('./file.js')"` and check for `SyntaxError`. If broken, use a small Python script with `bytes.replace()` to fix the literal escape sequences.
 
+### 12. Modularization Pattern for Telegraf Bots
+*   **Fact:** A monolithic `webhook.js` with 2,250+ lines is hard to maintain, debug, and collaborate on.
+*   **Lesson:** Extract domain-specific handlers into separate files under `lib/handlers/`. Each file exports a `setupDomainName(bot)` function that registers its own `bot.action`, `bot.hears`, etc. handlers on the passed `bot` instance.
+*   **Key rule:** Call `setup*` functions in webhook.js in the exact order the handlers should be registered. Specific handlers (commands, `hears`) must be registered before the catch-all `bot.on('text')`.
+*   **Function scope gotcha:** If a handler function needs to be called from the `bot.on('text')` handler (e.g., `showOrdersForDay`, `showAnalytics`), it must be defined at **module level** (not inside the `setup*` function), so it can be exported and imported by webhook.js.
+
+### 13. Server-Side Bot Must Use `service_role` Key With Supabase
+*   **Fact:** RLS policies block anonymous key operations. A server-side bot deployed on Vercel/Edge Functions is a backend service, not a client.
+*   **Lesson:** Always use `SUPABASE_SERVICE_ROLE_KEY` (not `SUPABASE_ANON_KEY`) for server-side Supabase clients. The `service_role` key bypasses all RLS policies, which is correct for backend services. Keep RLS policies strict for client-side code.
+*   **Pitfall:** If you switch an existing bot from `anon` to `service_role`, make sure the `service_role` key is already in the Vercel environment variables before deploying. The bot will be completely broken until the key is set.
+
+### 14. Error Logging Must Include Context
+*   **Fact:** Generic `console.error('Error fetching orders:', error.message)` is useless when debugging production issues — you have no idea which user, which order, or what the full stack trace is.
+*   **Lesson:** Every `console.error` should include:
+  - A `[functionName]` tag for grep-ability
+  - Relevant context IDs (userId, orderId, itemId, etc.)
+  - The full error object (not just `.message`), so stack traces appear in logs
+*   **Example:**
+  ```javascript
+  // Good
+  console.error('[getItemsByCategory] categoryId:', categoryId, error.message, error)
+  // Bad
+  console.error('Error fetching items:', error.message)
+  ```
+
+### 15. Telegram API Catch Handler Must Log Stack Traces
+*   **Fact:** `bot.catch()` catches unhandled errors. Logging just `err` (the object) in Vercel often produces `[Object]` with no stack trace visible.
+*   **Lesson:** Use `err?.stack || err` in the global catch handler to ensure the full stack trace is logged. Include ctx context (userId, chatId) for traceability.
+*   **Example:**
+  ```javascript
+  bot.catch((err, ctx) => {
+    console.error(`[bot.catch] userId=${ctx.from?.id}:`, err?.stack || err)
+    ctx.reply('⚠️ Something went wrong.').catch(e => console.error('Reply failed:', e.message))
+  })
+  ```
+
 ## 🛠 Useful Patterns
 
 ### Persistence Wrapper Pattern

@@ -83,3 +83,54 @@ The project was executed in three main phases, followed by critical bug fixing a
 | `lib/slots.js` | Replaced N+1 per-slot count queries with single batched query (count in `Map` in memory) |
 | `lib/admin-commands.js` | Fixed escaped string literals, re-added `/addcashier` handler |
 | `api/webhook.js` | Removed unused `order` param from `formatOrderSummary`, broadcast now sends 20 concurrent messages via `Promise.allSettled`, `remove_` regex tightened to UUID-only, removed legacy `add_` handler |
+
+## 📂 Modularization (April 2025)
+
+**webhook.js reduced from 2,250 → 550 lines.** Split into 10 domain handler files:
+
+```
+api/webhook.js                        → 550 lines (imports + setup + /start + commands + text handler + export)
+lib/handlers/
+  admin-orders.js                     → View Orders, Analytics, Total Sales
+  admin-menu.js                       → Category/Item CRUD, Toppings/Groups, Assignments
+  admin-staff.js                      → Add/Remove/List cashiers
+  admin-slots.js                      → Slot management
+  admin-broadcast.js                  → Broadcast flow
+  student-menu.js                     → Browse menu, customization flow, toppings toggles
+  student-cart.js                     → Cart display, qty controls, confirm order
+  student-orders.js                   → My Orders display
+  cashier-orders.js                   → Active orders, status transitions, order lookup
+  toppings-groups-manage.js           → Edit toppings and groups admin panel
+  helpers.js                          → Shared utility functions
+```
+
+Each file exports a `setup*` function that takes the `bot` instance and registers its own handlers. Registration order is preserved to ensure specific handlers fire before the catch-all `bot.on('text')`.
+
+`showOrdersForDay` and `showAnalytics` were moved to module-level scope so the text handler (in webhook.js) can call them directly.
+
+---
+
+## 🔐 RLS Policy Fix & Error Handling Overhaul (May 2026)
+
+### 1. Database RLS Cleanup Broke the Bot
+- **Issue:** After dropping 15 wide-open anonymous policies (May 8 RLS cleanup), every bot database operation silently failed. The `users` SELECT returned 0 rows, all INSERT/UPDATE/DELETE were blocked.
+- **Root cause:** `lib/supabase.js` was initialized with `SUPABASE_ANON_KEY` (the public client key), which is subject to RLS. The bot is a server-side service (Vercel) and should use the `service_role` key to bypass RLS.
+- **Fix:** Changed `lib/supabase.js` line 7 from `SUPABASE_ANON_KEY` to `SUPABASE_SERVICE_ROLE_KEY`. The key was already in `.env` but was never wired up.
+- **Lesson:** Service-side scripts that need full DB access must use `service_role` key. The `anon` key is only appropriate for client-side code (browser/mobile) where RLS enforces per-user access.
+
+### 2. Error Logging Made Debuggable
+- **Issue:** All 50+ `console.error` calls in the bot only logged `error.message` with no context about which function failed or what parameters it was called with.
+- **Fix:** Every `console.error` now includes:
+  - A `[functionName]` tag for grep-ability
+  - Relevant context IDs (userId, orderId, itemId, cartId, etc.)
+  - The full error object (so stack traces appear in Vercel logs)
+- **Files affected:** `lib/menu.js`, `lib/cart.js`, `lib/orders.js`, `lib/slots.js`, `lib/toppings.js`, `lib/auth.js`, `lib/state.js`, `lib/notifications.js`, `api/webhook.js`, `lib/handlers/admin-orders.js`, `lib/handlers/admin-menu.js`, `lib/handlers/student-cart.js`, `lib/handlers/student-menu.js`, `lib/handlers/student-orders.js`
+
+### 3. Global Error Handler Improved
+- **Before:** Generic "Oops, something went wrong" in English, no context logged.
+- **After:** Logs `userId`, `chatId`, and full stack trace. Replies in Arabic with a message advising the user to contact support if the issue persists.
+
+### 4. New try/catch Paths Added
+- `clear_cart` handler (student-cart.js): Was missing error handling entirely — would crash the bot on Supabase failure.
+- `deleteState` DB operations (state.js): Both `DELETE` and `upsert` branches weren't checking for errors.
+- `notifyCashiers` order details fetch (notifications.js): Secondary query for order details wasn't error-checked.

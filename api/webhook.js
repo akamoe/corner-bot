@@ -52,16 +52,20 @@ bot.command('setup_commands', requireAdmin, async (ctx) => {
     { command: 'status', description: 'Check your active order' },
     { command: 'cart', description: 'View your cart' },
     { command: 'help', description: 'Show help' }
-  ]).catch(err => console.error('Failed to set commands:', err.message))
+  ]).catch(err => console.error('[setup_commands] Failed to set commands:', err.message, err))
   ctx.reply('Commands updated successfully.')
 })
 
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────
 
 bot.catch((err, ctx) => {
-  console.error('Telegraf error:', err)
+  const ctxInfo = ctx
+    ? `userId=${ctx.from?.id} chatId=${ctx.chat?.id}`
+    : 'no ctx'
+  console.error(`[webhook:bot.catch] ${ctxInfo}:`, err?.stack || err)
   if (ctx) {
-    ctx.reply('Oops, something went wrong. Please try again.').catch(console.error)
+    ctx.reply('⚠️ صار خطأ غير متوقع. حاول مرة ثانية.\nإذا استمرت المشكلة، تواصل مع الإدارة.')
+      .catch(e => console.error('[webhook] Failed to send error reply:', e.message))
   }
 })
 
@@ -123,7 +127,7 @@ bot.command('status', async (ctx) => {
     .maybeSingle()
 
   if (error) {
-    console.error('Error fetching active order:', error.message)
+    console.error('[webhook:/status] userId:', ctx.from.id, error.message, error)
     return ctx.reply('⚠️ ما قدرنا نحمل طلبك. جرب ثاني.')
   }
 
@@ -281,7 +285,7 @@ bot.on('text', async (ctx) => {
     await adminFlowState.delete(userId)
 
     if (error) {
-      console.error('Error adding cashier:', error.message)
+      console.error('[webhook:add_cashier] telegramId:', telegramId, error.message, error)
       return ctx.reply('❌ Failed to add cashier. Please try again.')
     }
 
@@ -291,7 +295,7 @@ bot.on('text', async (ctx) => {
   }
 
   if (flow.step === 'awaiting_remove_id') {
-    if (!/^\d+$/.test(text)) {
+    if (!/^\\d+$/.test(text)) {
       await adminFlowState.delete(userId)
       return ctx.reply('❌ Invalid ID. Please send a numeric Telegram ID only.')
     }
@@ -299,7 +303,7 @@ bot.on('text', async (ctx) => {
     const { error } = await supabase.from('staff').update({ is_active: false }).eq('telegram_hash', hash)
     await adminFlowState.delete(userId)
     if (error) {
-      console.error('Error removing cashier:', error.message)
+      console.error('[webhook:remove_cashier] hash:', hash, error.message, error)
       return ctx.reply('❌ Failed to remove cashier.')
     }
     return ctx.reply('✅ Cashier removed.')
@@ -539,7 +543,7 @@ export default async function handler(req, res) {
       await bot.handleUpdate(req.body)
       res.status(200).json({ ok: true })
     } catch (err) {
-      console.error(err)
+      console.error('[webhook:handler] Error handling update:', err?.stack || err)
       res.status(500).json({ error: 'Internal error' })
     }
   } else {
