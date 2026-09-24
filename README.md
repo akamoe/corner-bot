@@ -3,7 +3,7 @@
 Telegram bot for the Corner corn restaurant (campus, Iraq). Telegraf on Vercel
 serverless, talking to the shared Supabase project the web app also uses.
 
-- Bot: [@corner_rest_bot](https://t.me/corner_rest_bot) — webhook `https://bot.corner.green/api/webhook`
+- Bot: [@corner_rest_bot](https://t.me/corner_rest_bot) — webhook `https://bot.corneriq.site/api/webhook`
 - One bot, three roles: **student**, **cashier**, **admin** (resolved from `staff` / `ADMIN_TELEGRAM_ID`)
 
 ## Commands
@@ -29,7 +29,8 @@ ADMIN_TELEGRAM_ID=         # numeric Telegram id of the owner
 WEBHOOK_SECRET=            # must match the secret_token registered with Telegram
 ```
 
-Optional: `RESTAURANT_TIMEZONE` (default `Asia/Baghdad`), `PORT`, `PROD_WEBHOOK_URL`.
+Optional: `RESTAURANT_TIMEZONE` (default `Asia/Baghdad`), `PORT`, `WEBHOOK_URL`, `PROD_WEBHOOK_URL`.
+Set both webhook URL variables to `https://bot.corneriq.site/api/webhook` when using the setup script or local polling.
 
 ## How it works
 

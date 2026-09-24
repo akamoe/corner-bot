@@ -2,7 +2,7 @@
 /**
  * Register the Telegram webhook + command list.
  *
- *   npm run setup -- --url https://bot.corner.green/api/webhook
+ *   npm run setup -- --url https://bot.corneriq.site/api/webhook
  *   npm run setup -- --delete        # remove the webhook (e.g. to use polling)
  *   npm run setup -- --info          # just print the current webhook state
  *
