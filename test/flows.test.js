@@ -35,7 +35,7 @@ const TOP_2 = 'a7777777-7777-4777-8777-777777777777'
 // The app imports `./supabase.js`; swap it for a proxy to the current fake.
 let current = null
 mock.module('../lib/supabase.js', {
-  defaultExport: { from: (...args) => current.from(...args) }
+  defaultExport: { from: (...args) => current.from(...args), rpc: (...args) => current.rpc(...args) }
 })
 
 const { createBot } = await import('../lib/bot.js')
@@ -245,9 +245,12 @@ test('student can browse, customize, and order a meal end to end', async () => {
   assert.ok(!slotButtons.some(([, data]) => data === `slot_${SLOT_PAST}`), 'past slot hidden')
   assert.match(slotButtons.find(([, data]) => data === `slot_${SLOT_1}`)[0], /باقي 3/)
 
-  // 11. book it
+  // 11. choose cash and book it
   h.api.take()
   await h.tap(`slot_${SLOT_1}`)
+  assert.ok(buttonsOf(lastMessage(h.api)).some(([, data]) => data === `pay_cash_${SLOT_1}`))
+  h.api.take()
+  await h.tap(`pay_cash_${SLOT_1}`)
   const order = h.db.rows('orders').find((o) => o.status === 'confirmed')
   assert.ok(order, 'order should be confirmed')
   assert.match(order.order_code, /^ORD-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{5}$/)
@@ -538,6 +541,20 @@ test('students cannot cancel someone else’s order', async () => {
   assert.equal(h.db.rows('orders').find((o) => o.id === otherId).status, 'confirmed')
 })
 
+test('a shared cart button cannot change another customer’s item', async () => {
+  const h = await harness()
+  const otherCart = uuid()
+  const otherItem = uuid()
+  h.db.rows('users').push({ id: 'other-user', telegram_id: '9999999', telegram_hash: telegramHash(9999999) })
+  h.db.rows('orders').push({ id: otherCart, status: 'pending', user_id: 'other-user', created_at: new Date().toISOString() })
+  h.db.rows('order_items').push({ id: otherItem, order_id: otherCart, item_name: 'زنجر', item_price: 3000, quantity: 1 })
+
+  await h.tap(`cart_qty_up_${otherItem}`, STUDENT)
+  assert.equal(h.db.rows('order_items').find((item) => item.id === otherItem).quantity, 1)
+  assert.ok(h.api.calls.some((call) => call.method === 'answerCallbackQuery'
+    && /ما قدرنا/.test(call.payload.text || '')))
+})
+
 // ─── order notes ────────────────────────────────────────────────
 
 test('a cart note flows onto the confirmed order', async () => {
@@ -555,6 +572,7 @@ test('a cart note flows onto the confirmed order', async () => {
 
   await h.tap('confirm_order')
   await h.tap(`slot_${SLOT_1}`)
+  await h.tap(`pay_cash_${SLOT_1}`)
 
   const order = h.db.rows('orders').find((o) => o.id === cartId)
   assert.equal(order.status, 'confirmed')

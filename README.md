@@ -32,6 +32,33 @@ WEBHOOK_SECRET=            # must match the secret_token registered with Telegra
 Optional: `RESTAURANT_TIMEZONE` (default `Asia/Baghdad`), `PORT`, `WEBHOOK_URL`, `PROD_WEBHOOK_URL`.
 Set both webhook URL variables to `https://bot.corneriq.site/api/webhook` when using the setup script or local polling.
 
+## Wayl checkout
+
+The customer selects a pickup time and then chooses cash or a Wayl payment link.
+The bot confirms an electronic order only after a signed Wayl callback and a
+server-side Wayl status check. The browser return page does not confirm payment.
+
+Set these values in the **bot's own** server environment:
+
+```
+WAYL_API_KEY=             # Wayl merchant key; do not use the website's runtime environment
+WAYL_WEBHOOK_SECRET=      # unique bot secret, at least 32 characters
+WAYL_ENV=test             # keep test until the full checkout is verified
+WAYL_SITE_URL=https://bot.corneriq.site
+CRON_SECRET=              # protects /api/wayl-reconcile
+```
+
+Wayl sends callbacks to `https://bot.corneriq.site/api/wayl`. The return page is
+`https://bot.corneriq.site/api/wayl-return`. The cleanup route runs daily under
+Vercel Cron and also needs `CRON_SECRET`. Missing Wayl values hide the electronic
+payment option and reject Wayl callbacks. Test mode never confirms an order or
+notifies the kitchen. Do not change `WAYL_ENV` to `live` before a separate
+end-to-end test and deployment review.
+
+The shared database migration and rollback are in `supabase/migrations` and
+`docs/wayl`. The rollback stops if any Telegram payment row exists. See
+`docs/wayl/review.md` for the production impact, tests, and buying journey audit.
+
 ## How it works
 
 - **State** lives in the `bot_state` table (one jsonb row per Telegram user) —

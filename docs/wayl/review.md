@@ -1,6 +1,10 @@
-# Wayl in the Telegram bot: approval review
+# Wayl in the Telegram bot: implementation and purchase review
 
-Status: proposal. No migration was applied. No payment link or customer order was created.
+Status: the user approved the migration and all purchase-flow changes. The
+`20260925_telegram_wayl_checkout.sql` migration and the approved
+`20260925180500_telegram_wayl_order_code_fix.sql` repair were applied on
+2026-09-25 to production project `halujssasooosxyjruhg`. No Wayl link, real customer order,
+charge, or staff message was created during testing. No code was deployed.
 
 ## Integration path
 
@@ -20,14 +24,29 @@ Use a new `public.telegram_wayl_payments` table linked to `public.users.id` and 
 
 ## Exact SQL and rollback
 
-- [Proposed production migration](PROPOSED_telegram_wayl_checkout.sql)
-- [Proposed rollback before any payment row exists](PROPOSED_rollback.sql)
+- [Applied production migration](../../supabase/migrations/20260925_telegram_wayl_checkout.sql)
+- [Reviewed SQL copy](PROPOSED_telegram_wayl_checkout.sql)
+- [Applied order-code repair](../../supabase/migrations/20260925180500_telegram_wayl_order_code_fix.sql)
+- [Reviewed repair SQL copy](PROPOSED_fix_order_code.sql)
+- [Rollback before any payment row exists](PROPOSED_rollback.sql)
 
-Both files are review artifacts. Do not run them without explicit approval. If any payment row exists, the rollback stops before it drops anything. Keep paid history and prepare a data-preserving repair or a backup restore instead.
+The migration and reviewed SQL copy were identical when applied. The rollback
+has not been run. If any payment row exists, it stops before it drops anything.
+Keep paid history and prepare a data-preserving repair or a backup restore
+instead.
 
-The migration runs in one transaction. It creates one table, two indexes, two guard triggers, and five payment functions. It does not change `web_payments`, website payment functions, Auth tables, or existing rows. The item trigger locks each parent order on item edits. That lock also affects website item writes, so test for added contention before release. The order trigger prevents direct changes to a basket with an open bot checkout. Service-role access is limited by server-side owner, basket, amount, and state checks in the functions; RLS bypass alone is not treated as authorization.
+The repair was needed because production `orders.order_code` is NOT NULL and a
+new pending basket already has a code. The first migration tried to clear that
+code when a live unpaid link was cancelled or refunded. The repair keeps the
+code and clears only the reserved slot and amount. It replaces two functions,
+changes no rows, and leaves website payment objects untouched. If payment rows
+remain at zero, the full rollback can remove both functions and the Telegram
+payment table. Once payment history exists, preserve it and use a reviewed
+forward repair instead of dropping it.
 
-## Required bot behavior after approval
+The migration runs in one transaction. It creates one table, two indexes, two guard triggers, five payment functions, and one atomic bot-cart function. It does not change `web_payments`, website payment functions, Auth tables, or existing rows. The item trigger locks each parent order on item edits. That lock also affects website item writes, so test for added contention before release. The order trigger prevents direct changes to a basket with an open bot checkout. Service-role access is limited by server-side owner, basket, amount, and state checks in the functions; RLS bypass alone is not treated as authorization.
+
+## Bot behavior
 
 1. Show the selected slot, basket total, and a choice between cash and Wayl. In `WAYL_ENV=test`, mark the Wayl option clearly as a test and do not send a kitchen order.
 2. Call `create_telegram_wayl_checkout` using the server-resolved bot user and cart IDs. Repeated taps reuse the same open checkout for the same basket and slot. A different basket with the same request ID fails.
@@ -39,9 +58,12 @@ The migration runs in one transaction. It creates one table, two indexes, two gu
 8. Reconcile open links by Wayl reference when the customer checks status and in a scheduled bot job. Release a slot only after Wayl confirms a terminal unpaid state or the link has been invalidated at Wayl. Do not release on a local timer alone.
 9. Store `WAYL_API_KEY`, `WAYL_WEBHOOK_SECRET`, `WAYL_ENV`, and `WAYL_SITE_URL` in the bot environment only. Missing or invalid values hide the Wayl option and reject callbacks. The return page can tell the customer that confirmation is pending and send them back to the bot; it must not say payment succeeded.
 
-## Purchase journey review: proposals only
+## Purchase journey review
 
-No buying journey change has been made. These changes need separate approval.
+The user approved these changes. The bot now uses an explicit payment choice,
+checks item price and availability again, keeps the payment result separate
+from the kitchen status, and shows an Arabic retry path for common failures.
+The table records the issues found in the full purchase path.
 
 | Finding | Evidence in bot | Proposed change |
 | --- | --- | --- |
@@ -58,13 +80,53 @@ No buying journey change has been made. These changes need separate approval.
 | Customization cancellation returns to category root, and page arrows have no text label | `student-menu.js` cancel and page buttons | Return to the current category and label controls in Arabic, such as previous and next. |
 | Help copy has no payment or support path | `helpText()` in `lib/bot.js` | Explain cash versus Wayl, test mode, pending payment, and how to contact staff. |
 | A newer order can hide an older active order, and cancellation can race with staff action | `getOrdersForUser()` limits to five before `showMyOrders()` filters; `cancelOrderByStudent()` checks status before an unconditional update | Fetch all active orders separately; cancel only with an atomic `status = confirmed` condition. |
-| A staff message can fail while the customer sees a confirmed order | `notifyCashiers()` logs send errors and returns | Add a durable notification retry record and a staff-visible alert for repeated failure. |
+| A staff message can fail while the customer sees a confirmed order | `notifyCashiers()` logged send errors and returned | The customer now gets an Arabic warning with the order code if staff delivery fails. Wayl paid notices have durable claim and retry fields. Cash orders still need a durable staff retry record; this needs another reviewed production schema change. |
 
 The current flow already shows topping prices, required topping groups, quantity, basket total, and remaining slot places. Keep those clear parts. Review the final Arabic copy with a local reader before release.
 
-## Test gate
+## Test evidence and remaining limits
 
-Run pure unit and fake-database tests first: forged signature, wrong secret, tampered raw body, body size, amount and currency mismatch, duplicate and out-of-order callbacks, unknown reference, owner mismatch, and test-mode isolation. No test may call live Wayl charge or send real staff notifications. After migration approval, use one clearly named disposable test identity, record counts for `users`, `orders`, `order_items`, `bot_state`, and `telegram_wayl_payments` before and after, remove the test rows, and require exact count parity. Keep `WAYL_ENV=test` throughout. This test plan is pending approval because the shared database is production.
+`npm run check` parsed 42 files. `npm test` passed 40 tests, including forged
+signature, wrong secret, tampered body, size limit, amount/currency/reference
+mismatch, duplicate and out-of-order callback, unknown reference, and a shared
+cart button used by another customer. These tests use a fake Telegram API.
+
+The production database check used one disposable identity named
+`disposable-wayl-test-<random UUID>` with an impossible negative Telegram ID.
+It created one pending test basket and item, then deleted both and the identity.
+It did not call Wayl or send a Telegram message. The owner, past-slot, and
+unknown-reference guards blocked the expected calls. Every active pickup slot
+had passed, so a successful checkout RPC and Wayl link could not be
+tested on the production database at that time. `WAYL_ENV` has not been set to
+live. A controlled test-mode link and signed callback still need verification
+before deployment.
+
+A second disposable test identity directly created a `test` payment state row
+without calling Wayl. The database blocked item edits during the pending
+checkout. A test completion changed payment state to paid while the basket
+remained pending with the same slot and order code. Duplicate completion did
+not change the order. Refund changed payment state to refunded; a later stale
+completion left it refunded. This identity and its rows were removed. An
+initial test assertion wrongly expected a pending basket to have no order code;
+production generates one by default. The corrected before-and-after check
+passed. Neither test sent a customer or staff message.
+
+| Table | Before test | After cleanup |
+| --- | ---: | ---: |
+| `users` | 19 | 19 |
+| `orders` | 75 | 75 |
+| `order_items` | 117 | 117 |
+| `bot_state` | 0 | 0 |
+| `web_payments` | 0 | 0 |
+| `telegram_wayl_payments` | 0 | 0 |
+
+The Wayl key and webhook secret are not in this repository. Until the bot's
+own environment has the four required Wayl values and `CRON_SECRET`, the
+payment option stays hidden and callbacks fail closed. Cash-order staff
+notification retry remains a separate database task. Daily cron cleanup and
+on-demand status checks handle open links; on a Vercel Hobby plan, the daily
+cron schedule can leave an unpaid slot reserved longer than 15 minutes when
+the customer never checks status.
 
 Read-only production counts during this proposal (two reads, no writes):
 
@@ -77,4 +139,5 @@ Read-only production counts during this proposal (two reads, no writes):
 | `bot_state` | 0 | 0 |
 | `web_payments` | 0 | 0 |
 
-No disposable identity was created at this stage. The proposed table does not exist, and the database test is still pending approval.
+These first read-only counts were taken before this work. Three users were
+added independently before the disposable test; no other table count changed.

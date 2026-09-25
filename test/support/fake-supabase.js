@@ -364,7 +364,7 @@ export function createFakeSupabase(seed = {}) {
       if (state.action === 'delete') {
         const doomed = matching()
         tables[name] = rows.filter((row) => !doomed.includes(row))
-        return { data: null, error: null, count: doomed.length }
+        return state.returning ? finish(doomed) : { data: null, error: null, count: doomed.length }
       }
 
       return { data: null, error: error(`unsupported action ${state.action}`), count: null }
@@ -375,6 +375,20 @@ export function createFakeSupabase(seed = {}) {
 
   return {
     from: builder,
+    async rpc(name, args) {
+      if (name === 'get_or_create_telegram_cart') {
+        const userId = args.p_user_id
+        let cart = table('orders').filter((row) => row.user_id === userId && row.status === 'pending')
+          .sort((a, b) => compare(b.created_at, a.created_at))[0]
+        if (!cart) {
+          cart = { id: crypto.randomUUID(), user_id: userId, status: 'pending',
+            created_at: new Date().toISOString() }
+          table('orders').push(cart)
+        }
+        return { data: { ...cart }, error: null }
+      }
+      return { data: null, error: error(`unsupported rpc ${name}`) }
+    },
     tables,
     /** test helper: live snapshot of a table */
     rows: (name) => table(name)

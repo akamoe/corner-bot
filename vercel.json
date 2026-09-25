@@ -1,9 +1,15 @@
 {
   "version": 2,
   "functions": {
-    "api/webhook.js": { "maxDuration": 30 }
+    "api/webhook.js": { "maxDuration": 30 },
+    "api/wayl.js": { "maxDuration": 30 },
+    "api/wayl-reconcile.js": { "maxDuration": 30 }
   },
   "routes": [
-    { "src": "/api/webhook", "dest": "/api/webhook.js" }
-  ]
+    { "src": "/api/webhook", "dest": "/api/webhook.js" },
+    { "src": "/api/wayl", "dest": "/api/wayl.js" },
+    { "src": "/api/wayl-return", "dest": "/api/wayl-return.js" },
+    { "src": "/api/wayl-reconcile", "dest": "/api/wayl-reconcile.js" }
+  ],
+  "crons": [{ "path": "/api/wayl-reconcile", "schedule": "0 0 * * *" }]
 }

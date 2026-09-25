@@ -1,0 +1,3 @@
+-- Remote migration 20260508101033 already exists on corner_bot.
+-- This bot repository does not own its SQL. This file only keeps Supabase CLI
+-- history aligned; it is never run on the linked production database.
