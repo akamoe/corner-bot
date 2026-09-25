@@ -58,6 +58,8 @@ end-to-end test and deployment review.
 The shared database migration and rollback are in `supabase/migrations` and
 `docs/wayl`. The rollback stops if any Telegram payment row exists. See
 `docs/wayl/review.md` for the production impact, tests, and buying journey audit.
+Cash orders queue staff notices before confirmation. Failed sends remain in
+`telegram_cash_staff_notices` for the scheduled retry route.
 
 ## How it works
 

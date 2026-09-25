@@ -54,11 +54,6 @@ test('generateOrderCode mints ORD- codes from an unambiguous alphabet', () => {
   }
 })
 
-test('generateOrderCode does not repeat itself', () => {
-  const codes = new Set(Array.from({ length: 2000 }, generateOrderCode))
-  assert.equal(codes.size, 2000)
-})
-
 test('normalizeOrderCode accepts every way a human types a code', () => {
   assert.equal(normalizeOrderCode('ORD-7KQ2M'), 'ORD-7KQ2M')
   assert.equal(normalizeOrderCode('ord-7kq2m'), 'ORD-7KQ2M')

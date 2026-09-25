@@ -41,6 +41,7 @@ mock.module('../lib/supabase.js', {
 const { createBot } = await import('../lib/bot.js')
 const { confirmOrder, getOrderByCode, SlotFullError } = await import('../lib/orders.js')
 const { getAvailableSlots } = await import('../lib/slots.js')
+const { notifyCashiers, retryCashierNotices } = await import('../lib/notifications.js')
 
 // ─── fixtures ───────────────────────────────────────────────────
 
@@ -274,6 +275,40 @@ test('student can browse, customize, and order a meal end to end', async () => {
 
   // the cart itself is no longer pending
   assert.ok(!h.db.rows('orders').some((o) => o.status === 'pending'))
+})
+
+test('cash staff notice remains queued after a send error and is sent once', async () => {
+  const h = await harness()
+  const userId = uuid()
+  const orderId = uuid()
+  h.db.rows('users').push({ id: userId, telegram_id: String(STUDENT) })
+  h.db.rows('orders').push({ id: orderId, user_id: userId, status: 'pending',
+    order_code: 'ORD-RETRY', slot_id: SLOT_1, total_amount: 3000,
+    created_at: new Date().toISOString() })
+  h.db.rows('order_items').push({ id: uuid(), order_id: orderId,
+    menu_item_id: ITEM_1, item_name: 'زنجر', item_price: 3000, quantity: 1 })
+  const queued = await h.db.rpc('queue_telegram_cash_staff_notices', {
+    p_user_id: userId, p_cart_id: orderId
+  })
+  assert.equal(queued.data, 1)
+  const denied = await h.db.rpc('queue_telegram_cash_staff_notices', {
+    p_user_id: uuid(), p_cart_id: orderId
+  })
+  assert.ok(denied.error)
+  h.db.rows('orders')[0].status = 'confirmed'
+
+  let attempts = 0
+  const botStub = { telegram: { sendMessage: async () => {
+    attempts++
+    if (attempts === 1) throw new Error('temporary Telegram failure')
+  } } }
+  const order = { id: orderId, status: 'confirmed' }
+  assert.equal((await notifyCashiers(botStub, order)).failed, 1)
+  assert.equal(h.db.rows('telegram_cash_staff_notices')[0].status, 'pending')
+  assert.equal(await retryCashierNotices(20, botStub), 1)
+  assert.equal(h.db.rows('telegram_cash_staff_notices')[0].status, 'sent')
+  assert.equal((await notifyCashiers(botStub, order)).sent, 0)
+  assert.equal(attempts, 2)
 })
 
 // ─── capacity ───────────────────────────────────────────────────

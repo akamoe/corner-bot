@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { reconcileExpiredPayments } from '../lib/wayl.js'
+import { retryCashierNotices } from '../lib/notifications.js'
 
 export async function GET(request) {
   const secret = process.env.CRON_SECRET
@@ -10,8 +11,9 @@ export async function GET(request) {
   if (!secret || left.length !== right.length || !timingSafeEqual(left, right))
     return new Response('Unauthorized', { status: 401 })
   try {
-    const handled = await reconcileExpiredPayments()
-    return Response.json({ handled })
+    const cashNoticesSent = await retryCashierNotices()
+    const waylHandled = await reconcileExpiredPayments()
+    return Response.json({ waylHandled, cashNoticesSent })
   } catch {
     return new Response('Unavailable', { status: 503 })
   }

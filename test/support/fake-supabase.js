@@ -376,6 +376,28 @@ export function createFakeSupabase(seed = {}) {
   return {
     from: builder,
     async rpc(name, args) {
+      if (name === 'queue_telegram_cash_staff_notices') {
+        const cart = table('orders').find((row) => row.id === args.p_cart_id)
+        if (!cart || cart.user_id !== args.p_user_id || cart.status !== 'pending')
+          return { data: null, error: error('CART_NOT_OWNED_OR_PENDING') }
+        if (!table('order_items').some((row) => row.order_id === cart.id))
+          return { data: null, error: error('EMPTY_CART') }
+        const active = table('staff').filter((row) => row.is_active
+          && ['cashier', 'admin'].includes(row.role) && row.telegram_id)
+        for (const member of active) {
+          if (!table('telegram_cash_staff_notices').some((row) =>
+            row.order_id === cart.id && row.staff_id === member.id)) {
+            table('telegram_cash_staff_notices').push({
+              order_id: cart.id, staff_id: member.id, status: 'pending',
+              claimed_at: null, sent_at: null, created_at: new Date().toISOString()
+            })
+          }
+        }
+        const count = table('telegram_cash_staff_notices').filter((row) =>
+          row.order_id === cart.id && row.status === 'pending').length
+        return count ? { data: count, error: null }
+          : { data: null, error: error('NO_ACTIVE_STAFF_TO_NOTIFY') }
+      }
       if (name === 'get_or_create_telegram_cart') {
         const userId = args.p_user_id
         let cart = table('orders').filter((row) => row.user_id === userId && row.status === 'pending')

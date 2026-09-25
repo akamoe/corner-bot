@@ -1,8 +1,9 @@
 # Wayl in the Telegram bot: implementation and purchase review
 
 Status: the user approved the migration and all purchase-flow changes. The
-`20260925_telegram_wayl_checkout.sql` migration and the approved
-`20260925180500_telegram_wayl_order_code_fix.sql` repair were applied on
+`20260925_telegram_wayl_checkout.sql` migration, the approved
+`20260925180500_telegram_wayl_order_code_fix.sql` repair, and
+`20260925182500_telegram_cash_staff_notices.sql` were applied on
 2026-09-25 to production project `halujssasooosxyjruhg`. No Wayl link, real customer order,
 charge, or staff message was created during testing. No code was deployed.
 
@@ -20,7 +21,7 @@ Use a new `public.telegram_wayl_payments` table linked to `public.users.id` and 
 | --- | --- | --- |
 | Make `web_payments.auth_id` nullable and add Telegram owner fields | One payment table | Changes the website's owner rules, constraints, RPCs, and security checks. Both apps must change together. |
 | Create website Auth users for Telegram customers | Reuses website RPCs | Adds artificial sign-ins, identity linking, and account lifecycle work. |
-| Separate Telegram payment table (proposed) | Keeps website payment identity unchanged; bot owner is explicit | Adds bot-specific table, RPCs, and triggers on shared order tables. |
+| Separate Telegram payment table (chosen) | Keeps website payment identity unchanged; bot owner is explicit | Adds bot-specific table, RPCs, and triggers on shared order tables. |
 
 ## Exact SQL and rollback
 
@@ -28,10 +29,13 @@ Use a new `public.telegram_wayl_payments` table linked to `public.users.id` and 
 - [Reviewed SQL copy](PROPOSED_telegram_wayl_checkout.sql)
 - [Applied order-code repair](../../supabase/migrations/20260925180500_telegram_wayl_order_code_fix.sql)
 - [Reviewed repair SQL copy](PROPOSED_fix_order_code.sql)
+- [Applied cash notice migration](../../supabase/migrations/20260925182500_telegram_cash_staff_notices.sql)
+- [Cash notice rollback](PROPOSED_cash_staff_notices_rollback.sql)
 - [Rollback before any payment row exists](PROPOSED_rollback.sql)
 
-The migration and reviewed SQL copy were identical when applied. The rollback
-has not been run. If any payment row exists, it stops before it drops anything.
+Each migration and its reviewed SQL copy were identical when applied. The
+rollbacks have not been run. Run the cash notice rollback before the payment
+rollback. Each stops if its table has any rows.
 Keep paid history and prepare a data-preserving repair or a backup restore
 instead.
 
@@ -80,16 +84,41 @@ The table records the issues found in the full purchase path.
 | Customization cancellation returns to category root, and page arrows have no text label | `student-menu.js` cancel and page buttons | Return to the current category and label controls in Arabic, such as previous and next. |
 | Help copy has no payment or support path | `helpText()` in `lib/bot.js` | Explain cash versus Wayl, test mode, pending payment, and how to contact staff. |
 | A newer order can hide an older active order, and cancellation can race with staff action | `getOrdersForUser()` limits to five before `showMyOrders()` filters; `cancelOrderByStudent()` checks status before an unconditional update | Fetch all active orders separately; cancel only with an atomic `status = confirmed` condition. |
-| A staff message can fail while the customer sees a confirmed order | `notifyCashiers()` logged send errors and returned | The customer now gets an Arabic warning with the order code if staff delivery fails. Wayl paid notices have durable claim and retry fields. Cash orders still need a durable staff retry record; this needs another reviewed production schema change. |
+| A staff message can fail while the customer sees a confirmed order | `notifyCashiers()` logged send errors and returned | The customer now gets an Arabic warning with the order code if staff delivery fails. Wayl paid notices have durable claim and retry fields. Cash staff notices are queued before confirmation and retried after a failure. |
 
 The current flow already shows topping prices, required topping groups, quantity, basket total, and remaining slot places. Keep those clear parts. Review the final Arabic copy with a local reader before release.
+
+## Durable cash staff notices
+
+The approved journey review asked for a durable cash-order staff notice retry.
+The user approved a separate shared production migration. The exact SQL is
+[PROPOSED_cash_staff_notices.sql](PROPOSED_cash_staff_notices.sql), with a
+[rollback](PROPOSED_cash_staff_notices_rollback.sql). The migration was
+applied. No code is deployed.
+
+The migration creates `public.telegram_cash_staff_notices`, one row per order
+and staff member, and one service-role RPC. The RPC checks the Telegram owner,
+pending basket, basket items, absence of an open Wayl checkout, and active
+staff recipients. The bot queues recipients before it confirms a cash order.
+A failed send remains pending and a later scheduled run retries it. A sent row
+stops duplicate sends from ordinary retries. The table has RLS and no access
+for anon or authenticated clients. It does not change website tables, Auth,
+existing rows, or existing order functions. The bot will block cash checkout
+if no active staff recipient can be queued.
+
+The rollback removes the RPC and table only while the notice table is empty.
+If notice history exists, keep it and make a reviewed forward repair instead.
+The new queue adds one insert before each cash confirmation and locks the
+order row during that insert. This can add brief order-row contention. The
+test uses a fake Telegram API and sends no real staff message.
 
 ## Test evidence and remaining limits
 
 `npm run check` parsed 42 files. `npm test` passed 40 tests, including forged
 signature, wrong secret, tampered body, size limit, amount/currency/reference
-mismatch, duplicate and out-of-order callback, unknown reference, and a shared
-cart button used by another customer. These tests use a fake Telegram API.
+mismatch, duplicate and out-of-order callback, unknown reference, a shared
+cart button used by another customer, and durable cash notice retry. These
+tests use a fake Telegram API.
 
 The production database check used one disposable identity named
 `disposable-wayl-test-<random UUID>` with an impossible negative Telegram ID.
@@ -120,10 +149,16 @@ passed. Neither test sent a customer or staff message.
 | `web_payments` | 0 | 0 |
 | `telegram_wayl_payments` | 0 | 0 |
 
+A third disposable identity tested the cash notice RPC after its migration.
+An unauthorised owner was blocked. Repeating the queue call kept one row per
+staff recipient. The test order stayed pending, and no Telegram message was
+sent. The identity, basket, item, and notice row were deleted. Counts before
+and after were: users 16, orders 75, order items 117, bot state 0, web
+payments 0, Wayl payments 0, and cash notices 0.
+
 The Wayl key and webhook secret are not in this repository. Until the bot's
 own environment has the four required Wayl values and `CRON_SECRET`, the
-payment option stays hidden and callbacks fail closed. Cash-order staff
-notification retry remains a separate database task. Daily cron cleanup and
+payment option stays hidden and callbacks fail closed. Daily cron cleanup and
 on-demand status checks handle open links; on a Vercel Hobby plan, the daily
 cron schedule can leave an unpaid slot reserved longer than 15 minutes when
 the customer never checks status.
