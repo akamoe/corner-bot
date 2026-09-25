@@ -1,3 +1,5 @@
+> **OBSOLETE (2026-09-25):** Historical record only. The bot is customer-only now. Staff notifications and all cashier/admin flows were removed.
+
 # Wayl in the Telegram bot: implementation and purchase review
 
 Status: the user approved the migration and all purchase-flow changes. The

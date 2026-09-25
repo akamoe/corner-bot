@@ -1,3 +1,5 @@
+> **OBSOLETE (2026-09-25):** Historical record only. The bot is customer-only now. Staff notifications and all cashier/admin flows were removed.
+
 # Corner Bot - Project Refactor & Optimization Summary
 
 This document summarizes the work performed on the Corner Bot to improve its reliability, performance, and maintainability in a serverless environment (Vercel).

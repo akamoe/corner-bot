@@ -20,10 +20,8 @@ import {
   firstMissingGroup,
   formatOrderItems,
   formatItemToppings,
-  orderStatusButtons,
   statusLabel,
   studentOrderCard,
-  cashierOrderCard,
   stripMarkdown
 } from '../lib/handlers/helpers.js'
 
@@ -194,45 +192,7 @@ test('status helpers cover every status the schema allows', () => {
   assert.equal(statusLabel('weird'), 'weird')
 })
 
-test('order status buttons follow the lifecycle and fit Telegram limits', () => {
-  const id = '3f1b6a2e-0f4a-4a1c-9a9e-9f2b7c1d4e5f'
-
-  const confirmed = orderStatusButtons({ id, status: 'confirmed' }).flat()
-  assert.deepEqual(
-    confirmed.map((b) => b.callback_data),
-    [`status_${id}_preparing`, `status_${id}_cancelled`]
-  )
-
-  const preparing = orderStatusButtons({ id, status: 'preparing' }).flat()
-  assert.deepEqual(
-    preparing.map((b) => b.callback_data),
-    [`status_${id}_ready`, `status_${id}_cancelled`]
-  )
-
-  const ready = orderStatusButtons({ id, status: 'ready' }).flat()
-  assert.deepEqual(
-    ready.map((b) => b.callback_data),
-    [`status_${id}_picked_up`]
-  )
-
-  assert.deepEqual(orderStatusButtons({ id, status: 'picked_up' }), [])
-  assert.deepEqual(orderStatusButtons({ id, status: 'cancelled' }), [])
-
-  for (const row of [
-    ...orderStatusButtons({ id, status: 'confirmed' }),
-    ...orderStatusButtons({ id, status: 'preparing' }),
-    ...orderStatusButtons({ id, status: 'ready' })
-  ]) {
-    for (const button of row) {
-      assert.ok(
-        Buffer.byteLength(button.callback_data, 'utf8') <= 64,
-        `callback_data too long: ${button.callback_data}`
-      )
-    }
-  }
-})
-
-test('order cards show code, slot, total and items', () => {
+test('student order card shows code, slot, total and items', () => {
   const order = {
     id: 'o1',
     order_code: 'ORD-7KQ2M',
@@ -250,10 +210,6 @@ test('order cards show code, slot, total and items', () => {
   assert.match(student, /12:00 PM/)
   assert.match(student, /7,000 د\.ع/)
   assert.match(student, /بدون بصل/)
-
-  const cashier = cashierOrderCard(order)
-  assert.match(cashier, /TOK-1/)
-  assert.match(cashier, /زنجر ×2/)
 })
 
 test('stripMarkdown removes the characters Telegram chokes on', () => {

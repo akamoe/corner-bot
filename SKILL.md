@@ -1,3 +1,5 @@
+> **OBSOLETE (2026-09-25):** Historical record only. The bot is customer-only now. Staff notifications and all cashier/admin flows were removed.
+
 # Skill: Telegram Bot Optimization for Serverless Environments
 
 Expert guidance for optimizing Node.js Telegram bots (Telegraf) running on serverless platforms like Vercel or AWS Lambda, specifically when integrated with Supabase.

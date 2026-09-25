@@ -19,11 +19,8 @@ process.env.BOT_TOKEN ||= 'test-token'
 process.env.SUPABASE_URL ||= 'http://localhost:1'
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-key'
 process.env.WEBHOOK_SECRET ||= 'test-secret'
-process.env.ADMIN_TELEGRAM_ID ||= '777'
 
 const STUDENT = 111
-const CASHIER = 999
-const ADMIN = 777
 const CAT_1 = 'a1111111-1111-4111-8111-111111111111'
 const ITEM_1 = 'a2222222-2222-4222-8222-222222222222'
 const SLOT_1 = 'a3333333-3333-4333-8333-333333333333'
@@ -41,7 +38,6 @@ mock.module('../lib/supabase.js', {
 const { createBot } = await import('../lib/bot.js')
 const { confirmOrder, getOrderByCode, SlotFullError } = await import('../lib/orders.js')
 const { getAvailableSlots } = await import('../lib/slots.js')
-const { notifyCashiers, retryCashierNotices } = await import('../lib/notifications.js')
 
 // ─── fixtures ───────────────────────────────────────────────────
 
@@ -104,16 +100,7 @@ function baseSeed({ slotMaxOrders = 3 } = {}) {
         is_active: true
       }
     ],
-    staff: [
-      {
-        id: 'staff-1',
-        telegram_id: String(CASHIER),
-        telegram_hash: telegramHash(CASHIER),
-        telegram_username: 'cashier',
-        role: 'cashier',
-        is_active: true
-      }
-    ],
+    staff: [],
     users: [],
     orders: [],
     order_items: [],
@@ -263,11 +250,9 @@ test('student can browse, customize, and order a meal end to end', async () => {
   assert.match(confirmation, /تم تثبيت طلبك/)
   assert.match(confirmation, /12:00 PM/)
 
-  // cashier was notified with the new order code
-  const cashierNotified = h.api
-    .messages()
-    .some((m) => String(m.payload.chat_id) === String(CASHIER) && m.payload.text.includes(order.order_code))
-  assert.ok(cashierNotified, 'cashier must be notified')
+  // A customer-only bot sends no staff notice. The cash order is confirmed on
+  // its own, and the customer gets the code.
+  assert.equal(h.db.rows('telegram_cash_staff_notices').length, 0, 'no staff notice is queued')
 
   // cart UI bookkeeping was cleaned up
   const state = h.db.rows('bot_state').find((r) => r.user_id === String(STUDENT) || r.user_id === STUDENT)
@@ -275,40 +260,6 @@ test('student can browse, customize, and order a meal end to end', async () => {
 
   // the cart itself is no longer pending
   assert.ok(!h.db.rows('orders').some((o) => o.status === 'pending'))
-})
-
-test('cash staff notice remains queued after a send error and is sent once', async () => {
-  const h = await harness()
-  const userId = uuid()
-  const orderId = uuid()
-  h.db.rows('users').push({ id: userId, telegram_id: String(STUDENT) })
-  h.db.rows('orders').push({ id: orderId, user_id: userId, status: 'pending',
-    order_code: 'ORD-RETRY', slot_id: SLOT_1, total_amount: 3000,
-    created_at: new Date().toISOString() })
-  h.db.rows('order_items').push({ id: uuid(), order_id: orderId,
-    menu_item_id: ITEM_1, item_name: 'زنجر', item_price: 3000, quantity: 1 })
-  const queued = await h.db.rpc('queue_telegram_cash_staff_notices', {
-    p_user_id: userId, p_cart_id: orderId
-  })
-  assert.equal(queued.data, 1)
-  const denied = await h.db.rpc('queue_telegram_cash_staff_notices', {
-    p_user_id: uuid(), p_cart_id: orderId
-  })
-  assert.ok(denied.error)
-  h.db.rows('orders')[0].status = 'confirmed'
-
-  let attempts = 0
-  const botStub = { telegram: { sendMessage: async () => {
-    attempts++
-    if (attempts === 1) throw new Error('temporary Telegram failure')
-  } } }
-  const order = { id: orderId, status: 'confirmed' }
-  assert.equal((await notifyCashiers(botStub, order)).failed, 1)
-  assert.equal(h.db.rows('telegram_cash_staff_notices')[0].status, 'pending')
-  assert.equal(await retryCashierNotices(20, botStub), 1)
-  assert.equal(h.db.rows('telegram_cash_staff_notices')[0].status, 'sent')
-  assert.equal((await notifyCashiers(botStub, order)).sent, 0)
-  assert.equal(attempts, 2)
 })
 
 // ─── capacity ───────────────────────────────────────────────────
@@ -406,99 +357,7 @@ test('order lookup accepts normalized and legacy codes', async () => {
   assert.equal(await getOrderByCode('ORD-99999'), null)
 })
 
-// ─── cashier flows ──────────────────────────────────────────────
-
-test('cashier sees ready orders, advances status, and the student is notified', async () => {
-  const h = await harness()
-  const orderId = uuid()
-  h.db.rows('users').push({ id: 'user-1', telegram_id: String(STUDENT), telegram_hash: telegramHash(STUDENT) })
-  h.db.rows('orders').push({
-    id: orderId,
-    order_code: 'ORD-ABC23',
-    status: 'ready',
-    user_id: 'user-1',
-    slot_id: SLOT_1,
-    total_amount: 5000,
-    created_at: new Date().toISOString()
-  })
-  h.db.rows('order_items').push({
-    id: uuid(),
-    order_id: orderId,
-    item_name: 'زنجر',
-    item_price: 5000,
-    quantity: 1
-  })
-
-  h.api.take()
-  await h.text('📋 الطلبات النشطة', CASHIER)
-  const list = h.api.messages().map((m) => m.payload)
-  const readyCard = list.find((p) => (p.text || '').includes('ORD-ABC23'))
-  assert.ok(readyCard, 'ready orders must appear in the active list')
-  assert.ok(
-    buttonsOf(readyCard).some(([, data]) => data === `status_${orderId}_picked_up`),
-    'a ready order must be markable as picked up'
-  )
-
-  // start preparing -> the student gets told
-  h.api.take()
-  await h.tap(`status_${orderId}_preparing`, CASHIER)
-  assert.equal(h.db.rows('orders').find((o) => o.id === orderId).status, 'preparing')
-  assert.ok(
-    h.api.messages().some((m) => String(m.payload.chat_id) === String(STUDENT) && /بدينا نحضر/.test(m.payload.text)),
-    'the student must be notified when the kitchen starts'
-  )
-
-  // mark picked up -> status changes, and no pointless notification
-  h.api.take()
-  await h.tap(`status_${orderId}_ready`, CASHIER)
-  h.api.take()
-  await h.tap(`status_${orderId}_picked_up`, CASHIER)
-  assert.equal(h.db.rows('orders').find((o) => o.id === orderId).status, 'picked_up')
-})
-
-test('stale buttons cannot revive a cancelled order', async () => {
-  const h = await harness()
-  const orderId = uuid()
-  h.db.rows('orders').push({
-    id: orderId,
-    order_code: 'ORD-ABC23',
-    status: 'cancelled',
-    slot_id: SLOT_1,
-    total_amount: 5000,
-    created_at: new Date().toISOString()
-  })
-
-  h.api.take()
-  await h.tap(`status_${orderId}_preparing`, CASHIER)
-
-  assert.equal(h.db.rows('orders').find((o) => o.id === orderId).status, 'cancelled')
-  const alerts = h.api.calls.filter((c) => c.method === 'answerCallbackQuery').map((c) => c.payload.text)
-  assert.ok(alerts.some((t) => /ملغي/.test(t)), `expected a refusal alert, got ${JSON.stringify(alerts)}`)
-})
-
-test('a cashier typing a code gets the order, and a wrong code gets an answer', async () => {
-  const h = await harness()
-  const orderId = uuid()
-  h.db.rows('orders').push({
-    id: orderId,
-    order_code: 'ORD-7KQ2M',
-    status: 'confirmed',
-    slot_id: SLOT_1,
-    total_amount: 5000,
-    created_at: new Date().toISOString()
-  })
-  h.db.rows('order_items').push({ id: uuid(), order_id: orderId, item_name: 'زنجر', item_price: 5000, quantity: 1 })
-
-  h.api.take()
-  await h.text('ord-7kq2m', CASHIER)
-  const card = lastMessage(h.api)
-  assert.match(card.text, /ORD-7KQ2M/)
-  assert.ok(buttonsOf(card).some(([, data]) => data === `status_${orderId}_preparing`))
-
-  h.api.take()
-  await h.text('ORD-ZZZZZ', CASHIER)
-  assert.match(lastMessage(h.api).text, /ما لقينا طلب/)
-})
+// ─── student text fallback ──────────────────────────────────────
 
 test('student text that is not a command gets a way forward, not silence', async () => {
   const h = await harness()
@@ -547,10 +406,6 @@ test('student can cancel their own confirmed order but not a started one', async
   h.api.take()
   await h.tap(`cancelorder_yes_${confirmedId}`)
   assert.equal(h.db.rows('orders').find((o) => o.id === confirmedId).status, 'cancelled')
-  assert.ok(
-    h.api.messages().some((m) => String(m.payload.chat_id) === String(CASHIER) && /انلغى من الطالب/.test(m.payload.text)),
-    'staff should hear about the cancellation'
-  )
 
   // the started order stays locked
   h.api.take()

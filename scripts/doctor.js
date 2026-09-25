@@ -33,7 +33,6 @@ const required = [
   'BOT_TOKEN',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
-  'ADMIN_TELEGRAM_ID',
   'WEBHOOK_SECRET'
 ]
 for (const key of required) {
